@@ -158,11 +158,18 @@
 .empty-state.compact { padding: 1rem; }
 .empty-state button { font-weight: 700; color: #ff5364; }
 
-.post-card { display: grid; grid-template-columns: 180px minmax(0,1fr); overflow: hidden; border: 1px solid rgba(255,255,255,.075); border-radius: .55rem; background: linear-gradient(145deg,rgba(19,22,29,.98),rgba(13,15,20,.98)); }
+.post-card { display: grid; grid-template-columns: 210px minmax(0,1fr); overflow: hidden; border: 1px solid rgba(255,255,255,.075); border-radius: .55rem; background: linear-gradient(145deg,rgba(19,22,29,.98),rgba(13,15,20,.98)); }
 .topic-card { border-top-color: rgba(239,51,71,.45); }
 .author-rail { display: flex; flex-direction: column; align-items: center; gap: .6rem; border-right: 1px solid rgba(255,255,255,.06); background: rgba(0,0,0,.13); padding: 1.25rem 1rem; text-align: center; }
 .author-rail > strong { max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: .78rem; color: white; }
 .author-rail > small { margin-top: .4rem; font-size: .58rem; line-height: 1.5; text-transform: uppercase; color: rgba(255,255,255,.25); }
+.author-role-badge { width: 100%; max-width: none; min-height: 2.15rem; border-radius: .55rem; padding: .5rem .65rem; font-size: .58rem; letter-spacing: .06em; box-shadow: inset 0 1px 0 rgba(255,255,255,.24),0 8px 22px rgba(0,0,0,.24); text-shadow: 0 1px 2px rgba(0,0,0,.5); }
+.author-role-badge > span:first-child { display: grid; width: 1rem; height: 1rem; place-items: center; border-radius: 999px; background: rgba(255,255,255,.18); font-size: .5rem; }
+.author-role-badge small { border-left-color: rgba(255,255,255,.35); color: rgba(255,255,255,.82); }
+.author-stats { display: grid; width: 100%; gap: .28rem; }
+.author-stats > span { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: .4rem; border: 1px solid rgba(255,255,255,.055); border-radius: 999px; background: rgba(255,255,255,.035); padding: .28rem .5rem; font-size: .54rem; }
+.author-stats em { overflow: hidden; color: rgba(255,255,255,.32); font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+.author-stats b { overflow: hidden; color: rgba(255,255,255,.68); font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
 .achievement-list { display: flex; max-width: 100%; flex-wrap: wrap; justify-content: center; gap: .3rem; }
 .achievement-list span { border: 1px solid rgb(245 158 11 / .22); border-radius: 999px; background: rgb(245 158 11 / .08); padding: .2rem .45rem; color: rgb(253 230 138 / .9); font-size: .62rem; font-weight: 700; line-height: 1.2; }
 .account-achievements { justify-content: flex-start; }
@@ -198,6 +205,8 @@
   .post-card { grid-template-columns: 1fr; }
   .author-rail { flex-direction: row; justify-content: flex-start; border-right: 0; border-bottom: 1px solid rgba(255,255,255,.06); padding: .8rem 1rem; text-align: left; }
   .author-rail > small { display: none; }
+  .author-role-badge { width: auto; min-height: 1.8rem; }
+  .author-stats { display: none; }
   .avatar-mark { height: 2.4rem; width: 2.4rem; font-size: .75rem; }
   .thread-row { align-items: flex-start; }
   .thread-replies { display: none; }
@@ -282,6 +291,16 @@
 .signature-image-placeholder svg { width: 1rem; height: 1rem; flex: 0 0 auto; }
 .signature-image-placeholder span { font-size: .65rem; }
 .signature-card a { display: inline-block; margin-right: .65rem; margin-top: .5rem; font-size: .6rem; color: #60a5fa; }
+.post-signature { border-left-width: 4px; padding: 1rem 1.2rem 1.2rem; }
+.post-signature > strong { border-bottom: 1px solid rgba(255,255,255,.065); padding-bottom: .7rem; text-align: center; font-size: .86rem; line-height: 1.5; }
+.post-signature > p { max-width: 920px; margin: .7rem auto 0; text-align: center; font-size: .72rem; }
+.post-signature .signature-image-shell { width: min(100%,920px); margin: 1rem auto 0; }
+.post-signature .signature-image-shell img { width: 100%; max-width: 100%; max-height: none; border-radius: .5rem; box-shadow: 0 14px 45px rgba(0,0,0,.32); }
+.signature-links { text-align: center; }
+.formatted-center { text-align: center; }
+.forum-media-line { width: min(100%,980px); margin: .8rem auto; }
+.forum-media-line .signature-image-shell { margin-top: 0; }
+.forum-media-line .signature-image-shell img { width: 100%; max-width: 100%; max-height: none; border-radius: .5rem; object-fit: contain; box-shadow: 0 14px 45px rgba(0,0,0,.3); }
 .revision-box { margin-top: .75rem; border: 1px solid rgba(255,255,255,.06); border-radius: .35rem; background: rgba(0,0,0,.14); padding: .65rem; }
 .revision-box > button { display: flex; align-items: center; gap: .35rem; font-size: .6rem; color: rgba(255,255,255,.4); }
 .revision-box > button svg { height: .75rem; width: .75rem; }

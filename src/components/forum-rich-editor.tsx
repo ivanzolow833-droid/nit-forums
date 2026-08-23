@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Bold, Eye, Image as ImageIcon, Italic, Link, List, MessageSquareQuote, Redo2, RotateCcw, Smile, Undo2 } from "lucide-react";
+import { AlignCenter, Bold, Eye, Image as ImageIcon, Italic, Link, List, MessageSquareQuote, Redo2, RotateCcw, Smile, Undo2 } from "lucide-react";
+import { SignatureImage } from "@/components/signature-image";
 import { Textarea } from "@/components/ui/textarea";
 
 export function ForumRichEditor({ value, onChange, placeholder, rows = 7, maxLength = 10_000, toolbar = true }: { value: string; onChange: (value: string) => void; placeholder: string; rows?: number; maxLength?: number; toolbar?: boolean }) {
@@ -69,6 +70,7 @@ export function ForumRichEditor({ value, onChange, placeholder, rows = 7, maxLen
       <button type="button" onClick={() => wrap("*")} title="Курсив"><Italic /></button>
       <button type="button" onClick={() => prefixLines("> ")} title="Цитата"><MessageSquareQuote /></button>
       <button type="button" onClick={() => prefixLines("- ")} title="Список"><List /></button>
+      <button type="button" onClick={() => wrap("[center]", "[/center]")} title="По центру"><AlignCenter /></button>
       <button type="button" onClick={() => wrap("[", "](https://)", "ссылка")} title="Ссылка"><Link /></button>
       <button type="button" onClick={() => wrap("![", "](https://)", "изображение")} title="Изображение по ссылке"><ImageIcon /></button>
       <button type="button" onClick={() => wrap("", "", "🙂")} title="Emoji"><Smile /></button>
@@ -95,5 +97,13 @@ function inlineParts(text: string) {
 }
 
 export function ForumFormattedText({ text }: { text: string }) {
-  return <div className="formatted-text">{text.split("\n").map((line, index) => line.startsWith("> ") ? <blockquote key={index}>{inlineParts(line.slice(2))}</blockquote> : line.startsWith("- ") ? <div key={index} className="formatted-list-item"><span>•</span><p>{inlineParts(line.slice(2))}</p></div> : line ? <p key={index}>{inlineParts(line)}</p> : <br key={index} />)}</div>;
+  return <div className="formatted-text">{text.split("\n").map((line, index) => {
+    const centered = line.match(/^\[center\](.*)\[\/center\]$/);
+    const image = line.match(/^!\[([^\]]*)\]\((https:\/\/[^)]+)\)$/);
+    if (image) return <div key={index} className="forum-media-line"><SignatureImage src={image[2]} alt={image[1] || "Изображение в сообщении"} errorText="Изображение в сообщении не загрузилось" /></div>;
+    if (centered) return <p key={index} className="formatted-center">{inlineParts(centered[1])}</p>;
+    if (line.startsWith("> ")) return <blockquote key={index}>{inlineParts(line.slice(2))}</blockquote>;
+    if (line.startsWith("- ")) return <div key={index} className="formatted-list-item"><span>•</span><p>{inlineParts(line.slice(2))}</p></div>;
+    return line ? <p key={index}>{inlineParts(line)}</p> : <br key={index} />;
+  })}</div>;
 }

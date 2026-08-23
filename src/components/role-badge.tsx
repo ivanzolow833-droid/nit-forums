@@ -4,14 +4,14 @@ import { statusLabels } from "@/lib/forum-data";
 import type { TopicStatusDefinition } from "@/lib/forum-store";
 import type { RoleDefinition } from "@/lib/forum-roles";
 
-export function RoleBadge({ role, className }: { role: RoleDefinition; className?: string }) {
+export function RoleBadge({ role, className, prominent = false }: { role: RoleDefinition; className?: string; prominent?: boolean }) {
   return (
     <span
       className={cn("role-badge", className)}
       style={{
-        color: role.color,
-        borderColor: `${role.color}70`,
-        background: role.gradient || `${role.color}16`,
+        color: prominent ? "#ffffff" : role.color,
+        borderColor: prominent ? `${role.color}cc` : `${role.color}70`,
+        background: role.gradient || (prominent ? `linear-gradient(135deg,${role.color},color-mix(in srgb,${role.color} 52%,#05070a))` : `${role.color}16`),
       }}
       title={role.description}
     >

@@ -123,13 +123,23 @@ test("personal appearance and owner branding are persistent server actions", asy
 });
 
 test("rich editor exposes real undo, redo and preview controls", async () => {
-  const editor = await source("src/components/forum-rich-editor.tsx");
+  const [editor, app, styles] = await Promise.all([
+    source("src/components/forum-rich-editor.tsx"),
+    source("src/components/forum-app.tsx"),
+    source("src/app/globals.css"),
+  ]);
   assert.match(editor, /function undo\(\)/);
   assert.match(editor, /function redo\(\)/);
   assert.match(editor, /historyIndex\.current -= 1/);
   assert.match(editor, /historyIndex\.current \+= 1/);
   assert.match(editor, /Ctrl\+Z/);
   assert.match(editor, /Предпросмотр/);
+  assert.match(editor, /\[center\]/);
+  assert.match(editor, /formatted-center/);
+  assert.match(editor, /forum-media-line/);
+  assert.match(app, /className="author-role-badge" prominent/);
+  assert.match(styles, /\.author-role-badge \{ width: 100%/);
+  assert.match(styles, /\.post-signature \.signature-image-shell img \{ width: 100%/);
 });
 
 test("players receive safe copyable topic templates for core boards", async () => {

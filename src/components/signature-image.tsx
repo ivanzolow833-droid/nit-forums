@@ -5,11 +5,11 @@
 import { ImageOff } from "lucide-react";
 import { useState } from "react";
 
-export function SignatureImage({ src, alt }: { src: string; alt: string }) {
-  return <SignatureImageLoader key={src} src={src} alt={alt} />;
+export function SignatureImage({ src, alt, errorText = "Изображение подписи не загрузилось" }: { src: string; alt: string; errorText?: string }) {
+  return <SignatureImageLoader key={src} src={src} alt={alt} errorText={errorText} />;
 }
 
-function SignatureImageLoader({ src, alt }: { src: string; alt: string }) {
+function SignatureImageLoader({ src, alt, errorText }: { src: string; alt: string; errorText: string }) {
   const [state, setState] = useState<"loading" | "loaded" | "error">("loading");
 
   return (
@@ -17,7 +17,7 @@ function SignatureImageLoader({ src, alt }: { src: string; alt: string }) {
       {state !== "loaded" ? (
         <div className={state === "error" ? "signature-image-placeholder error" : "signature-image-placeholder"} role="status">
           <ImageOff />
-          <span>{state === "error" ? "Изображение подписи не загрузилось" : "Загрузка изображения…"}</span>
+          <span>{state === "error" ? errorText : "Загрузка изображения…"}</span>
         </div>
       ) : null}
       <img
