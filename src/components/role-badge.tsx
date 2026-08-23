@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { cn } from "@/lib/utils";
 import type { ThreadStatus } from "@/lib/forum-data";
 import { statusLabels } from "@/lib/forum-data";
@@ -5,14 +6,15 @@ import type { TopicStatusDefinition } from "@/lib/forum-store";
 import type { RoleDefinition } from "@/lib/forum-roles";
 
 export function RoleBadge({ role, className, prominent = false }: { role: RoleDefinition; className?: string; prominent?: boolean }) {
+  const style = {
+    "--role-color": role.color,
+    "--role-gradient": role.gradient || `linear-gradient(135deg,${role.color},color-mix(in srgb,${role.color} 35%,#05070a))`,
+  } as CSSProperties;
   return (
     <span
-      className={cn("role-badge", className)}
-      style={{
-        color: prominent ? "#ffffff" : role.color,
-        borderColor: prominent ? `${role.color}cc` : `${role.color}70`,
-        background: role.gradient || (prominent ? `linear-gradient(135deg,${role.color},color-mix(in srgb,${role.color} 52%,#05070a))` : `${role.color}16`),
-      }}
+      className={cn("role-badge", prominent && "role-badge-prominent", className)}
+      style={style}
+      data-role={role.id}
       title={role.description}
     >
       {role.icon ? <span aria-hidden="true">{role.icon}</span> : null}

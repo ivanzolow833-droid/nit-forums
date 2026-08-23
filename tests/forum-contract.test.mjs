@@ -231,3 +231,20 @@ test("signature save has a stable JSON contract and resilient client parsing", a
   assert.match(image, /onError=\{\(\) => setState\("error"\)\}/);
   assert.match(image, /Изображение подписи не загрузилось/);
 });
+
+test("role cards stay distinct and author names open public profiles", async () => {
+  const [app, badge, styles] = await Promise.all([
+    source("src/components/forum-app.tsx"),
+    source("src/components/role-badge.tsx"),
+    source("src/app/globals.css"),
+  ]);
+  assert.match(app, /name: "profile"; userId: string/);
+  assert.match(app, /function PublicProfileView/);
+  assert.match(app, /className="author-profile-link"/);
+  assert.match(app, /onProfile=\{\(userId\) => navigate\(\{ name: "profile", userId \}\)\}/);
+  assert.match(badge, /--role-color/);
+  assert.match(badge, /data-role=\{role\.id\}/);
+  assert.match(styles, /role-badge-shine/);
+  assert.match(styles, /public-profile-card/);
+  assert.match(styles, /--cw-accent: #a855f7/);
+});

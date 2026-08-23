@@ -36,7 +36,7 @@ export type ForumAppearanceSettings = {
 
 export const defaultForumUserPreferences: ForumUserPreferences = {
   theme: "dark",
-  accent: "red",
+  accent: "purple",
   density: "comfortable",
   background: "aurora",
   sidebarCollapsed: false,
@@ -46,7 +46,7 @@ export const defaultForumUserPreferences: ForumUserPreferences = {
   showActivity: true,
   editorToolbar: true,
   profileBannerUrl: "",
-  profileAccent: "#ef3347",
+  profileAccent: "#a855f7",
   profileTitle: "",
   serverLabel: "CloudWorld",
   forumReadAt: "",
@@ -62,7 +62,7 @@ export const defaultForumAppearance: ForumAppearanceSettings = {
   logoImageUrl: "",
   serverName: "Сервер CloudWorld",
   serverIp: "cloudworldmc.ru",
-  accentColor: "#ef3347",
+  accentColor: "#a855f7",
   showHero: true,
   showRightSidebar: true,
 };
