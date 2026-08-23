@@ -264,6 +264,15 @@ export type SearchResult = {
   meta: string;
 };
 
+export type ForumAiSuggestion = {
+  title: string;
+  body: string;
+  why: string;
+  ruleReference: string;
+  recommendedStatusId: string;
+  closeTopic: boolean;
+};
+
 export type ForumPayload = {
   currentUser: ForumUser | null;
   viewingAsRole: RoleDefinition | null;
@@ -299,6 +308,7 @@ export type ForumPayload = {
   blockedUsers: ForumUser[];
   integrations: ForumIntegration[];
   forumSettings: { trashRetentionDays: number };
+  aiReplyAssistantEnabled: boolean;
 };
 
 export type ForumAction =
@@ -336,6 +346,7 @@ export type ForumAction =
   | { action: "duplicate_template"; templateId: string }
   | { action: "delete_template"; templateId: string }
   | { action: "use_template"; templateId: string; threadId: string; variables: Record<string, string> }
+  | { action: "ai_suggest_reply"; threadId: string; guidance: string; tone: "neutral" | "strict" | "short" }
   | { action: "save_signature"; signature: ForumSignature }
   | { action: "mark_notifications_read" }
   | { action: "toggle_bookmark"; threadId: string }
@@ -398,7 +409,7 @@ export async function runForumAction(action: ForumAction) {
     headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken() },
     body: JSON.stringify(action),
   });
-  const data = (await response.json()) as { ok?: boolean; error?: string; id?: string; missingVariables?: string[] };
+  const data = (await response.json()) as { ok?: boolean; error?: string; id?: string; missingVariables?: string[]; suggestions?: ForumAiSuggestion[] };
   if (!response.ok) {
     throw new ForumRequestError(data.error ?? "Действие не выполнено.", response.status);
   }

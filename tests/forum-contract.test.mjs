@@ -72,3 +72,36 @@ test("authentication failures stay inside the API error boundary", async () => {
   assert.match(database, /owner_credentials_v3/);
   assert.match(database, /must_change_password=TRUE/);
 });
+
+test("staff reply templates are seeded once without overwriting later edits", async () => {
+  const database = await source("src/lib/forum-db.ts");
+  for (const templateId of [
+    "base-review",
+    "base-punished",
+    "base-evidence",
+    "base-no-violation",
+    "base-transfer",
+    "base-rejected",
+    "base-unpunished",
+    "base-appeal-approved",
+    "base-appeal-rejected",
+    "base-clarification",
+    "base-tech-resolved",
+    "base-closed",
+  ]) assert.match(database, new RegExp(`id: "${templateId}"`), `missing ${templateId}`);
+  assert.match(database, /default_staff_templates_v1/);
+  assert.match(database, /if \(marker\.rowCount\) return/);
+});
+
+test("AI suggestions use server-side Groq structured output and never auto-post", async () => {
+  const route = await source("src/app/api/forum/route.ts");
+  const start = route.indexOf("async function suggestAiReplies");
+  const end = route.indexOf("function validateHttpsUrl", start);
+  const handler = route.slice(start, end);
+  assert.match(handler, /process\.env\.GROQ_API_KEY/);
+  assert.match(handler, /https:\/\/api\.groq\.com\/openai\/v1\/responses/);
+  assert.match(handler, /store: false/);
+  assert.match(handler, /json_schema/);
+  assert.match(handler, /ровно три готовых варианта/);
+  assert.doesNotMatch(handler, /INSERT INTO forum_posts/);
+});

@@ -11,6 +11,275 @@ const DEFAULT_OWNER = {
   password: "CloudWorldAdmin1",
 };
 
+const DEFAULT_STAFF_TEMPLATES = [
+  {
+    id: "base-review",
+    title: "Взято на рассмотрение",
+    body: `Здравствуйте, уважаемый {topic_author}!
+
+Ваше обращение принято на рассмотрение. Пожалуйста, ожидайте итогового решения в этой теме и не создавайте повторные обращения по тому же вопросу.
+
+С уважением,
+{moderator} · {role}
+CLOUD WORLD`,
+    favorite: true,
+    sortOrder: 10,
+    autoStatusId: "review",
+    autoClose: false,
+    autoLock: false,
+    transferRoleId: null,
+    internalNote: "",
+  },
+  {
+    id: "base-punished",
+    title: "Игрок наказан",
+    body: `Здравствуйте, уважаемый {topic_author}!
+
+Ваша жалоба на игрока {player} рассмотрена.
+
+Вердикт: нарушение подтверждено.
+Пункт правил: {rule}
+Наказание: {punishment}
+
+Благодарим за обращение и помощь в поддержании порядка на сервере.
+
+С уважением,
+{moderator} · {role}
+CLOUD WORLD`,
+    favorite: true,
+    sortOrder: 20,
+    autoStatusId: "punished",
+    autoClose: true,
+    autoLock: true,
+    transferRoleId: null,
+    internalNote: "",
+  },
+  {
+    id: "base-evidence",
+    title: "Недостаточно доказательств",
+    body: `Здравствуйте, уважаемый {topic_author}!
+
+Для принятия решения по обращению недостаточно доказательств.
+
+Пожалуйста, предоставьте: {evidence}.
+Материалы должны ясно показывать нарушение и принадлежать к рассматриваемой ситуации.
+
+Тема останется открытой для дополнения доказательств.
+
+С уважением,
+{moderator} · {role}
+CLOUD WORLD`,
+    favorite: true,
+    sortOrder: 30,
+    autoStatusId: "evidence",
+    autoClose: false,
+    autoLock: false,
+    transferRoleId: null,
+    internalNote: "",
+  },
+  {
+    id: "base-no-violation",
+    title: "Нарушение не найдено",
+    body: `Здравствуйте, уважаемый {topic_author}!
+
+Ваша жалоба на игрока {player} рассмотрена.
+
+По предоставленным материалам нарушение правил не подтверждено.
+Комментарий администратора: {reason}
+
+Если у вас появятся новые доказательства, создайте новое обращение и приложите их полностью.
+
+С уважением,
+{moderator} · {role}
+CLOUD WORLD`,
+    favorite: true,
+    sortOrder: 40,
+    autoStatusId: "unpunished",
+    autoClose: true,
+    autoLock: true,
+    transferRoleId: null,
+    internalNote: "",
+  },
+  {
+    id: "base-transfer",
+    title: "Передано старшей администрации",
+    body: `Здравствуйте, уважаемый {topic_author}!
+
+Ваше обращение требует решения старшей администрации и передано на дополнительное рассмотрение.
+
+Причина передачи: {reason}
+Пожалуйста, ожидайте ответа в этой теме.
+
+С уважением,
+{moderator} · {role}
+CLOUD WORLD`,
+    favorite: false,
+    sortOrder: 50,
+    autoStatusId: "transferred",
+    autoClose: false,
+    autoLock: false,
+    transferRoleId: "gladmin",
+    internalNote: "Обращение автоматически передано Главному администратору через базовый шаблон.",
+  },
+  {
+    id: "base-rejected",
+    title: "Жалоба отклонена",
+    body: `Здравствуйте, уважаемый {topic_author}!
+
+Ваше обращение отклонено.
+
+Причина: {reason}
+
+Перед повторной подачей проверьте форму раздела, сроки хранения доказательств и требования правил форума.
+
+С уважением,
+{moderator} · {role}
+CLOUD WORLD`,
+    favorite: false,
+    sortOrder: 60,
+    autoStatusId: "rejected",
+    autoClose: true,
+    autoLock: true,
+    transferRoleId: null,
+    internalNote: "",
+  },
+  {
+    id: "base-unpunished",
+    title: "Наказание снято",
+    body: `Здравствуйте, уважаемый {topic_author}!
+
+Ваше обжалование наказания игрока {player} рассмотрено и одобрено.
+
+Решение: наказание будет снято или скорректировано.
+Основание: {reason}
+
+Приносим извинения за доставленные неудобства.
+
+С уважением,
+{moderator} · {role}
+CLOUD WORLD`,
+    favorite: false,
+    sortOrder: 70,
+    autoStatusId: "unpunished",
+    autoClose: true,
+    autoLock: true,
+    transferRoleId: null,
+    internalNote: "",
+  },
+  {
+    id: "base-appeal-approved",
+    title: "Апелляция одобрена",
+    body: `Здравствуйте, уважаемый {topic_author}!
+
+Апелляция по наказанию игрока {player} рассмотрена.
+
+Решение: апелляция одобрена.
+Комментарий: {reason}
+
+Изменение наказания будет применено администрацией в ближайшее время.
+
+С уважением,
+{moderator} · {role}
+CLOUD WORLD`,
+    favorite: false,
+    sortOrder: 80,
+    autoStatusId: "resolved",
+    autoClose: true,
+    autoLock: true,
+    transferRoleId: null,
+    internalNote: "",
+  },
+  {
+    id: "base-appeal-rejected",
+    title: "Апелляция отклонена",
+    body: `Здравствуйте, уважаемый {topic_author}!
+
+Апелляция по наказанию игрока {player} рассмотрена.
+
+Решение: наказание выдано корректно и остаётся в силе.
+Основание: {reason}
+
+Повторные обращения без новых обстоятельств рассматриваться не будут.
+
+С уважением,
+{moderator} · {role}
+CLOUD WORLD`,
+    favorite: false,
+    sortOrder: 90,
+    autoStatusId: "rejected",
+    autoClose: true,
+    autoLock: true,
+    transferRoleId: null,
+    internalNote: "",
+  },
+  {
+    id: "base-clarification",
+    title: "Требуется уточнение",
+    body: `Здравствуйте, уважаемый {topic_author}!
+
+Для продолжения рассмотрения обращения требуется уточнить информацию:
+{reason}
+
+Ответьте в этой теме и приложите недостающие сведения. После дополнения обращение будет рассмотрено повторно.
+
+С уважением,
+{moderator} · {role}
+CLOUD WORLD`,
+    favorite: false,
+    sortOrder: 100,
+    autoStatusId: "evidence",
+    autoClose: false,
+    autoLock: false,
+    transferRoleId: null,
+    internalNote: "",
+  },
+  {
+    id: "base-tech-resolved",
+    title: "Техническая проблема решена",
+    body: `Здравствуйте, уважаемый {topic_author}!
+
+Ваше техническое обращение рассмотрено.
+
+Результат: проблема решена.
+Комментарий специалиста: {reason}
+
+Если проблема повторится, создайте новое обращение и укажите ID этой темы: {topic_id}.
+
+С уважением,
+{moderator} · {role}
+CLOUD WORLD`,
+    favorite: false,
+    sortOrder: 110,
+    autoStatusId: "resolved",
+    autoClose: true,
+    autoLock: true,
+    transferRoleId: null,
+    internalNote: "",
+  },
+  {
+    id: "base-closed",
+    title: "Тема закрыта",
+    body: `Здравствуйте, уважаемый {topic_author}!
+
+Вопрос по теме «{topic_title}» рассмотрен. Тема закрыта.
+
+Итоговый комментарий: {reason}
+
+Благодарим за обращение.
+
+С уважением,
+{moderator} · {role}
+CLOUD WORLD`,
+    favorite: false,
+    sortOrder: 120,
+    autoStatusId: "closed",
+    autoClose: true,
+    autoLock: true,
+    transferRoleId: null,
+    internalNote: "",
+  },
+] as const;
+
 type ForumDbGlobal = typeof globalThis & {
   cloudWorldForumPool?: Pool;
   cloudWorldForumSchema?: Promise<void>;
@@ -72,6 +341,7 @@ async function initializeForumDatabase() {
     await seedIntegrations(client);
     await seedSettings(client);
     await seedOwner(client);
+    await seedDefaultTemplates(client);
     await syncPrimaryUserRoles(client);
     await purgeExpiredTrash(client);
     await seedForumStructure(client);
@@ -351,6 +621,54 @@ async function seedOwner(client: PoolClient) {
   await client.query(
     "UPDATE forum_users SET role_id='owner' WHERE username_normalized=$1",
     [normalized],
+  );
+}
+
+function defaultTemplateVariables(body: string) {
+  return [...new Set([...body.matchAll(/\{([a-z_][a-z0-9_]{0,31})\}/g)].map((match) => match[1]))];
+}
+
+async function seedDefaultTemplates(client: PoolClient) {
+  const markerKey = "default_staff_templates_v1";
+  const marker = await client.query("SELECT 1 FROM forum_settings WHERE key=$1", [markerKey]);
+  if (marker.rowCount) return;
+
+  for (const template of DEFAULT_STAFF_TEMPLATES) {
+    const inserted = await client.query<{ id: string }>(
+      `INSERT INTO forum_templates
+        (id,owner_id,role_id,scope,title,body,is_favorite,sort_order,auto_status_id,
+         auto_close,auto_lock,transfer_role_id,internal_note,is_enabled)
+       VALUES ($1,NULL,NULL,'global',$2,$3,$4,$5,$6,$7,$8,$9,$10,TRUE)
+       ON CONFLICT (id) DO NOTHING
+       RETURNING id`,
+      [
+        template.id,
+        template.title,
+        template.body,
+        template.favorite,
+        template.sortOrder,
+        template.autoStatusId,
+        template.autoClose,
+        template.autoLock,
+        template.transferRoleId,
+        template.internalNote,
+      ],
+    );
+    if (!inserted.rowCount) continue;
+    for (const variable of defaultTemplateVariables(template.body)) {
+      await client.query(
+        `INSERT INTO forum_template_variables (template_id,key,label)
+         VALUES ($1,$2,$2) ON CONFLICT DO NOTHING`,
+        [template.id, variable],
+      );
+    }
+  }
+
+  await client.query(
+    `INSERT INTO forum_settings (key,value)
+     VALUES ($1,'{"installed":true,"version":1}'::jsonb)
+     ON CONFLICT (key) DO NOTHING`,
+    [markerKey],
   );
 }
 
