@@ -78,6 +78,8 @@ export type ForumUser = {
   points: number;
   reactionsCount: number;
   postsCount: number;
+  lastSeenAt: string | null;
+  online: boolean;
   achievements: ForumAchievement[];
   preferences: ForumUserPreferences;
 };
@@ -191,6 +193,8 @@ export type ForumThread = {
   tags: ForumTag[];
   bookmarked: boolean;
   subscribed: boolean;
+  acceptedPostId: string | null;
+  mergedIntoId: string | null;
 };
 
 export type ReactionSummary = {
@@ -226,10 +230,39 @@ export type ForumPost = {
   createdAt: string;
   editedAt: string | null;
   internal: boolean;
+  privateContent: boolean;
   signature: ForumSignature | null;
   reactions: ReactionSummary[];
   revisions: { id: string; oldBody: string; newBody: string; editor: string; createdAt: string }[];
 };
+
+export type ForumContentReport = {
+  id: string; targetType: "thread" | "post" | "user" | "market"; targetId: string; reason: string;
+  status: "open" | "review" | "resolved" | "rejected"; priority: number; ageHours: number;
+  reporterName: string; assignedName: string | null; resolution: string; createdAt: string;
+};
+
+export type ForumEvidence = {
+  id: string; caseId: string; url: string; type: string; description: string; timecode: string;
+  status: "pending" | "verified" | "rejected"; submittedBy: string; createdAt: string;
+};
+
+export type ForumCaseFile = {
+  id: string; threadId: string | null; title: string; type: string;
+  status: "open" | "review" | "waiting" | "resolved" | "rejected";
+  priority: number; overdue: boolean; slaDueAt: string; assignedName: string | null;
+  resolution: string; evidence: ForumEvidence[]; createdAt: string;
+};
+
+export type ForumPoll = {
+  id: string; threadId: string; question: string; multipleChoice: boolean; closesAt: string | null; closed: boolean;
+  options: { id: string; label: string; votes: number; selected: boolean }[];
+};
+
+export type KnowledgeArticle = { id: string; sourceThreadId: string | null; title: string; body: string; status: "draft" | "published" | "archived"; authorName: string; updatedAt: string };
+export type ForumEvent = { id: string; title: string; description: string; startsAt: string; capacity: number; status: string; registered: number; myStatus: string | null };
+export type MarketListing = { id: string; sellerId: string; sellerName: string; buyerId: string | null; type: "sell" | "buy" | "service"; title: string; description: string; priceLabel: string; status: string; transactionId: string | null; transactionStatus: string | null; createdAt: string };
+export type MinecraftServerStatus = { online: boolean; playersOnline: number; playersMax: number; latencyMs: number | null; version: string; checkedAt: string };
 
 export type ForumTemplate = {
   id: string;
@@ -376,6 +409,25 @@ export type ForumPayload = {
   integrations: ForumIntegration[];
   forumSettings: { trashRetentionDays: number; appearance: ForumAppearanceSettings };
   aiReplyAssistantEnabled: boolean;
+  contentReports: ForumContentReport[];
+  caseFiles: ForumCaseFile[];
+  activePoll: ForumPoll | null;
+  knowledgeArticles: KnowledgeArticle[];
+  events: ForumEvent[];
+  marketListings: MarketListing[];
+  notificationPreferences: Record<string, boolean>;
+  staffAvailability: { available: boolean; maxActiveCases: number } | null;
+  serverStatus: MinecraftServerStatus;
+};
+
+export type ForumAiTriage = {
+  summary: string;
+  category: "report" | "appeal" | "support" | "application" | "other";
+  priority: number;
+  missingEvidence: string[];
+  suggestedNextStep: string;
+  duplicateThreadIds: string[];
+  confidence: number;
 };
 
 export type ForumAction =
@@ -384,7 +436,7 @@ export type ForumAction =
   | { action: "logout" }
   | { action: "change_password"; currentPassword: string; newPassword: string }
   | { action: "create_thread"; boardId: string; title: string; body: string; tagIds?: string[]; formData?: Record<string, unknown> }
-  | { action: "create_post"; threadId: string; body: string; internal?: boolean }
+  | { action: "create_post"; threadId: string; body: string; internal?: boolean; privateContent?: boolean }
   | { action: "edit_thread"; threadId: string; title: string; body: string }
   | { action: "delete_thread"; threadId: string }
   | { action: "move_thread"; threadId: string; boardId: string }
@@ -414,6 +466,7 @@ export type ForumAction =
   | { action: "delete_template"; templateId: string }
   | { action: "use_template"; templateId: string; threadId: string; variables: Record<string, string> }
   | { action: "ai_suggest_reply"; threadId: string; guidance: string; tone: "neutral" | "strict" | "short" }
+  | { action: "ai_triage_case"; caseId: string }
   | { action: "save_signature"; signature: ForumSignature }
   | { action: "mark_notifications_read" }
   | { action: "toggle_bookmark"; threadId: string }
@@ -436,7 +489,29 @@ export type ForumAction =
   | { action: "save_tag"; tag: Partial<ForumTag> & { label: string; color: string; sortOrder: number } }
   | { action: "delete_tag"; tagId: string }
   | { action: "save_integration"; integration: ForumIntegration }
-  | { action: "save_forum_settings"; trashRetentionDays: number; appearance: ForumAppearanceSettings };
+  | { action: "save_forum_settings"; trashRetentionDays: number; appearance: ForumAppearanceSettings }
+  | { action: "report_content"; targetType: "thread" | "post" | "user" | "market"; targetId: string; reason: string }
+  | { action: "moderate_report"; reportId: string; status: "review" | "resolved" | "rejected"; resolution?: string }
+  | { action: "update_case"; caseId: string; status?: "open" | "review" | "waiting" | "resolved" | "rejected"; assignedTo?: string | null; resolution?: string; basePriority?: number }
+  | { action: "claim_next_work" }
+  | { action: "save_staff_availability"; available: boolean; maxActiveCases: number }
+  | { action: "add_evidence"; caseId: string; url: string; evidenceType: string; description: string; timecode: string }
+  | { action: "verify_evidence"; evidenceId: string; status: "verified" | "rejected" }
+  | { action: "create_poll"; threadId: string; question: string; options: string[]; multipleChoice: boolean; closesAt?: string }
+  | { action: "vote_poll"; pollId: string; optionIds: string[] }
+  | { action: "close_poll"; pollId: string }
+  | { action: "accept_answer"; threadId: string; postId: string }
+  | { action: "publish_knowledge"; threadId: string; title: string; body: string }
+  | { action: "create_event"; title: string; description: string; startsAt: string; capacity: number }
+  | { action: "register_event"; eventId: string }
+  | { action: "set_event_status"; eventId: string; status: "open" | "closed" | "completed" | "cancelled" }
+  | { action: "create_market_listing"; listingType: "sell" | "buy" | "service"; title: string; description: string; priceLabel: string }
+  | { action: "reserve_market_listing"; listingId: string }
+  | { action: "update_market_transaction"; transactionId: string; status: "seller_confirmed" | "completed" | "cancelled" | "disputed" }
+  | { action: "review_market_transaction"; transactionId: string; rating: number; body: string }
+  | { action: "save_notification_preferences"; preferences: Record<string, boolean> }
+  | { action: "merge_threads"; sourceThreadId: string; targetThreadId: string }
+  | { action: "split_post"; postId: string; boardId: string; title: string };
 
 export class ForumRequestError extends Error {
   status: number;
@@ -478,7 +553,7 @@ export async function runForumAction(action: ForumAction) {
     headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken() },
     body: JSON.stringify(action),
   });
-  const data = (await response.json()) as { ok?: boolean; error?: string; id?: string; missingVariables?: string[]; suggestions?: ForumAiSuggestion[] };
+  const data = (await response.json()) as { ok?: boolean; error?: string; id?: string; missingVariables?: string[]; suggestions?: ForumAiSuggestion[]; triage?: ForumAiTriage };
   if (!response.ok) {
     throw new ForumRequestError(data.error ?? "Действие не выполнено.", response.status);
   }

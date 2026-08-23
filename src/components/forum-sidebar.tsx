@@ -3,7 +3,7 @@
 import { ExternalLink, Server, Shield, UsersRound } from "lucide-react";
 import { RoleBadge } from "@/components/role-badge";
 import { quickLinks } from "@/lib/forum-data";
-import type { ForumAppearanceSettings, ForumUser } from "@/lib/forum-store";
+import type { ForumAppearanceSettings, ForumUser, MinecraftServerStatus } from "@/lib/forum-store";
 import type { RoleDefinition } from "@/lib/forum-roles";
 
 export function ForumSidebar({
@@ -11,11 +11,13 @@ export function ForumSidebar({
   roles,
   members,
   appearance,
+  serverStatus,
 }: {
   user: ForumUser | null;
   roles: RoleDefinition[];
   members: number;
   appearance: ForumAppearanceSettings;
+  serverStatus: MinecraftServerStatus;
 }) {
   return (
     <aside className="forum-context-sidebar space-y-4 lg:sticky lg:top-24 lg:self-start">
@@ -27,9 +29,10 @@ export function ForumSidebar({
             <div className="mt-1 font-mono text-base font-bold text-white">{appearance.serverIp}</div>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <div className="sidebar-stat"><strong>{members}</strong><span>участников</span></div>
-            <div className="sidebar-stat"><strong>{roles.length}</strong><span>уровней ролей</span></div>
+            <div className="sidebar-stat"><strong>{serverStatus.online ? `${serverStatus.playersOnline}/${serverStatus.playersMax}` : "—"}</strong><span>на сервере</span></div>
+            <div className="sidebar-stat"><strong>{members}</strong><span>на форуме</span></div>
           </div>
+          <div className={serverStatus.online ? "server-status-line online" : "server-status-line offline"}><span className="online-dot" /><strong>{serverStatus.online ? `Онлайн · ${serverStatus.version || "Minecraft"}` : "Сервер временно недоступен"}</strong>{serverStatus.latencyMs !== null ? <small>{serverStatus.latencyMs} мс</small> : null}</div>
           {user ? (
             <div className="rounded-lg border border-white/10 bg-black/25 p-3">
               <div className="sidebar-label">Ваш аккаунт</div>

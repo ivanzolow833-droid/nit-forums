@@ -69,8 +69,9 @@ test("authentication failures stay inside the API error boundary", async () => {
   assert.match(route, /action === "register"\) return await register/);
   assert.match(route, /action === "login"\) return await login/);
   assert.match(route, /action === "logout"\) return await logout/);
-  assert.match(database, /owner_credentials_v3/);
-  assert.match(database, /must_change_password=TRUE/);
+  assert.match(database, /process\.env\.FORUM_OWNER_PASSWORD/);
+  assert.match(database, /password\.length < 12/);
+  assert.doesNotMatch(database, /const DEFAULT_OWNER\s*=\s*\{[^}]*password:/s);
 });
 
 test("staff reply templates are seeded once without overwriting later edits", async () => {
@@ -144,11 +145,44 @@ test("players receive safe copyable topic templates for core boards", async () =
     "purchase-problem",
     "helper-application",
     "moderator-application",
-    "builder-application",
+    "cooperation-request",
     "leader-application",
   ]) assert.match(data, new RegExp(`id: "${templateId}"`), `missing ${templateId}`);
   assert.match(app, /navigator\.clipboard\.writeText/);
   assert.match(app, /document\.execCommand\("copy"\)/);
   assert.match(app, /Заполнить тему/);
   assert.match(app, /PlayerTemplateLibrary/);
+  assert.match(app, /player-template-visible-form/);
+  assert.doesNotMatch(app, /<details className="player-template/);
+});
+
+test("AI case triage excludes confidential content and never changes a case", async () => {
+  const route = await source("src/app/api/forum/route.ts");
+  assert.match(route, /ai_triage_case/);
+  assert.match(route, /p\.is_private=FALSE AND p\.is_internal=FALSE/);
+  assert.match(route, /Окончательное решение всегда принимает сотрудник/);
+  assert.match(route, /return NextResponse\.json\(\{ ok: true, triage \}\)/);
+});
+
+test("community workflows are persistent and permission checked", async () => {
+  const [migration, community, route, permissions] = await Promise.all([
+    source("src/lib/forum-migrations.ts"),
+    source("src/lib/forum-community.ts"),
+    source("src/app/api/forum/route.ts"),
+    source("src/lib/forum-permissions.ts"),
+  ]);
+  for (const table of ["forum_content_reports", "forum_case_files", "forum_case_evidence", "forum_polls", "forum_knowledge_articles", "forum_events", "forum_market_transactions", "forum_notification_preferences", "forum_antispam_events", "forum_thread_redirects"]) assert.match(migration, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`));
+  for (const permission of ["forum.reports.manage", "forum.cases.manage", "forum.evidence.manage", "forum.thread.merge", "forum.private_content.view"]) assert.match(permissions, new RegExp(permission.replaceAll(".", "\\.")));
+  assert.match(community, /requirePermission\(user, "forum\.reports\.manage"\)/);
+  assert.match(community, /requirePermission\(user, "forum\.cases\.manage"\)/);
+  assert.match(route, /p\.is_private=FALSE/);
+  assert.match(route, /p\.author_id=\$2 OR \$4=TRUE/);
+});
+
+test("Minecraft status is read directly without an extra cloud service", async () => {
+  const status = await source("src/lib/minecraft-status.ts");
+  assert.match(status, /from "node:net"/);
+  assert.match(status, /connect\(\{ host: connectAddress, port \}\)/);
+  assert.match(status, /isPrivateAddress/);
+  assert.doesNotMatch(status, /fetch\(/);
 });

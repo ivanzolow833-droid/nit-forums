@@ -318,6 +318,191 @@ const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS forum_revisions_post_idx ON forum_post_revisions(post_id, created_at DESC);
     `,
   },
+  {
+    version: 3,
+    name: "community_workflows_and_safe_content",
+    sql: `
+      ALTER TABLE forum_users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ;
+      ALTER TABLE forum_posts ADD COLUMN IF NOT EXISTS is_private BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE forum_threads ADD COLUMN IF NOT EXISTS accepted_post_id TEXT;
+      ALTER TABLE forum_threads ADD COLUMN IF NOT EXISTS merged_into_id TEXT;
+
+      CREATE TABLE IF NOT EXISTS forum_content_reports (
+        id TEXT PRIMARY KEY,
+        reporter_id TEXT NOT NULL REFERENCES forum_users(id) ON DELETE CASCADE,
+        target_type TEXT NOT NULL CHECK (target_type IN ('thread','post','user','market')),
+        target_id TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','review','resolved','rejected')),
+        base_priority INTEGER NOT NULL DEFAULT 10,
+        assigned_to TEXT REFERENCES forum_users(id) ON DELETE SET NULL,
+        resolution TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (reporter_id,target_type,target_id,status)
+      );
+      CREATE INDEX IF NOT EXISTS forum_content_reports_queue_idx ON forum_content_reports(status,created_at);
+
+      CREATE TABLE IF NOT EXISTS forum_case_files (
+        id TEXT PRIMARY KEY,
+        thread_id TEXT UNIQUE REFERENCES forum_threads(id) ON DELETE SET NULL,
+        title TEXT NOT NULL,
+        case_type TEXT NOT NULL DEFAULT 'request',
+        status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','review','waiting','resolved','rejected')),
+        base_priority INTEGER NOT NULL DEFAULT 10,
+        sla_due_at TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '24 hours',
+        assigned_to TEXT REFERENCES forum_users(id) ON DELETE SET NULL,
+        created_by TEXT NOT NULL REFERENCES forum_users(id),
+        resolution TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS forum_case_queue_idx ON forum_case_files(status,sla_due_at,created_at);
+
+      CREATE TABLE IF NOT EXISTS forum_case_evidence (
+        id TEXT PRIMARY KEY,
+        case_id TEXT NOT NULL REFERENCES forum_case_files(id) ON DELETE CASCADE,
+        submitted_by TEXT NOT NULL REFERENCES forum_users(id),
+        url TEXT NOT NULL,
+        evidence_type TEXT NOT NULL DEFAULT 'other',
+        description TEXT NOT NULL DEFAULT '',
+        timecode TEXT NOT NULL DEFAULT '',
+        verification_status TEXT NOT NULL DEFAULT 'pending' CHECK (verification_status IN ('pending','verified','rejected')),
+        checked_by TEXT REFERENCES forum_users(id) ON DELETE SET NULL,
+        checked_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS forum_staff_availability (
+        user_id TEXT PRIMARY KEY REFERENCES forum_users(id) ON DELETE CASCADE,
+        is_available BOOLEAN NOT NULL DEFAULT TRUE,
+        max_active_cases INTEGER NOT NULL DEFAULT 5,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS forum_polls (
+        id TEXT PRIMARY KEY,
+        thread_id TEXT NOT NULL REFERENCES forum_threads(id) ON DELETE CASCADE,
+        question TEXT NOT NULL,
+        multiple_choice BOOLEAN NOT NULL DEFAULT FALSE,
+        closes_at TIMESTAMPTZ,
+        created_by TEXT NOT NULL REFERENCES forum_users(id),
+        is_closed BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS forum_poll_options (
+        id TEXT PRIMARY KEY,
+        poll_id TEXT NOT NULL REFERENCES forum_polls(id) ON DELETE CASCADE,
+        label TEXT NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE IF NOT EXISTS forum_poll_votes (
+        poll_id TEXT NOT NULL REFERENCES forum_polls(id) ON DELETE CASCADE,
+        option_id TEXT NOT NULL REFERENCES forum_poll_options(id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL REFERENCES forum_users(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (poll_id,option_id,user_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS forum_knowledge_articles (
+        id TEXT PRIMARY KEY,
+        source_thread_id TEXT REFERENCES forum_threads(id) ON DELETE SET NULL,
+        title TEXT NOT NULL,
+        body TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published','archived')),
+        author_id TEXT NOT NULL REFERENCES forum_users(id),
+        approved_by TEXT REFERENCES forum_users(id) ON DELETE SET NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS forum_events (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        starts_at TIMESTAMPTZ NOT NULL,
+        capacity INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('draft','open','closed','completed','cancelled')),
+        created_by TEXT NOT NULL REFERENCES forum_users(id),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS forum_event_registrations (
+        event_id TEXT NOT NULL REFERENCES forum_events(id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL REFERENCES forum_users(id) ON DELETE CASCADE,
+        status TEXT NOT NULL DEFAULT 'registered' CHECK (status IN ('registered','waitlist','attended','cancelled')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (event_id,user_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS forum_market_listings (
+        id TEXT PRIMARY KEY,
+        seller_id TEXT NOT NULL REFERENCES forum_users(id),
+        listing_type TEXT NOT NULL CHECK (listing_type IN ('sell','buy','service')),
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        price_label TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','reserved','completed','closed','disputed')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS forum_market_transactions (
+        id TEXT PRIMARY KEY,
+        listing_id TEXT NOT NULL REFERENCES forum_market_listings(id) ON DELETE CASCADE,
+        buyer_id TEXT NOT NULL REFERENCES forum_users(id),
+        status TEXT NOT NULL DEFAULT 'reserved' CHECK (status IN ('reserved','seller_confirmed','completed','cancelled','disputed')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (listing_id,buyer_id)
+      );
+      CREATE TABLE IF NOT EXISTS forum_market_reviews (
+        transaction_id TEXT NOT NULL REFERENCES forum_market_transactions(id) ON DELETE CASCADE,
+        author_id TEXT NOT NULL REFERENCES forum_users(id),
+        target_id TEXT NOT NULL REFERENCES forum_users(id),
+        rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+        body TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (transaction_id,author_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS forum_notification_preferences (
+        user_id TEXT NOT NULL REFERENCES forum_users(id) ON DELETE CASCADE,
+        notification_type TEXT NOT NULL,
+        is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        PRIMARY KEY (user_id,notification_type)
+      );
+      CREATE TABLE IF NOT EXISTS forum_antispam_events (
+        id TEXT PRIMARY KEY,
+        user_id TEXT REFERENCES forum_users(id) ON DELETE SET NULL,
+        target_type TEXT NOT NULL,
+        target_id TEXT NOT NULL DEFAULT '',
+        score INTEGER NOT NULL,
+        reasons JSONB NOT NULL DEFAULT '[]'::jsonb,
+        action TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS forum_thread_redirects (
+        source_thread_id TEXT PRIMARY KEY,
+        target_thread_id TEXT NOT NULL REFERENCES forum_threads(id) ON DELETE CASCADE,
+        merged_by TEXT NOT NULL REFERENCES forum_users(id),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      INSERT INTO forum_case_files (id,thread_id,title,case_type,status,base_priority,sla_due_at,created_by,created_at,updated_at)
+      SELECT 'case-'||t.id,t.id,t.title,
+        CASE WHEN t.board_id IN ('player-reports','staff-reports') THEN 'report'
+             WHEN t.board_id='appeals-ban' THEN 'appeal'
+             WHEN t.board_id IN ('helper-apps','moderator-apps','leader-apps') THEN 'application'
+             ELSE 'support' END,
+        CASE WHEN t.status IN ('closed','resolved','rejected','punished','unpunished') THEN 'resolved' ELSE 'open' END,
+        10,t.created_at + INTERVAL '24 hours',t.author_id,t.created_at,t.updated_at
+      FROM forum_threads t
+      WHERE t.deleted_at IS NULL AND t.board_id IN ('player-reports','staff-reports','appeals-ban','support','donate-help','helper-apps','moderator-apps','leader-apps')
+      ON CONFLICT (thread_id) DO NOTHING;
+
+      UPDATE forum_boards SET is_hidden=TRUE,is_archived=TRUE WHERE id='builder-apps';
+    `,
+  },
 ];
 
 export async function runForumMigrations(client: PoolClient) {

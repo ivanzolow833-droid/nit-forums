@@ -20,6 +20,16 @@ export const permissionDefinitions = [
   ["forum.user.warn", "Предупреждения пользователям", "Пользователи"],
   ["forum.user.mute", "Блокировка сообщений", "Пользователи"],
   ["forum.user.ban", "Блокировка аккаунтов", "Пользователи"],
+  ["forum.private_content.view", "Просмотр конфиденциальных сообщений", "Безопасность"],
+  ["forum.reports.manage", "Рассмотрение жалоб на контент", "Модерация"],
+  ["forum.cases.manage", "Управление делами и SLA", "Модерация"],
+  ["forum.polls.manage", "Управление опросами", "Сообщество"],
+  ["forum.knowledge.manage", "Публикация базы знаний", "Сообщество"],
+  ["forum.events.manage", "Управление мероприятиями", "Сообщество"],
+  ["forum.market.manage", "Модерация торговой площадки", "Сообщество"],
+  ["forum.antispam.manage", "Управление антиспамом", "Безопасность"],
+  ["forum.thread.merge", "Объединение и разделение тем", "Модерация"],
+  ["forum.evidence.manage", "Проверка доказательств", "Модерация"],
   ["forum.templates.personal", "Личные шаблоны", "Шаблоны"],
   ["forum.templates.role", "Шаблоны роли", "Шаблоны"],
   ["forum.templates.global", "Глобальные шаблоны", "Шаблоны"],
@@ -63,6 +73,9 @@ const moderationPermissions: PermissionKey[] = [
   "forum.post.revisions",
   "forum.user.warn",
   "forum.audit.view",
+  "forum.reports.manage",
+  "forum.cases.manage",
+  "forum.evidence.manage",
 ];
 
 const administrationPermissions: PermissionKey[] = [
@@ -76,6 +89,13 @@ const administrationPermissions: PermissionKey[] = [
   "forum.reactions.manage",
   "forum.forms.manage",
   "forum.trash.manage",
+  "forum.private_content.view",
+  "forum.polls.manage",
+  "forum.knowledge.manage",
+  "forum.events.manage",
+  "forum.market.manage",
+  "forum.antispam.manage",
+  "forum.thread.merge",
 ];
 
 const seniorAdministrationPermissions: PermissionKey[] = [

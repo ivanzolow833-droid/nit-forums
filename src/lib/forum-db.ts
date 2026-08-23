@@ -7,10 +7,7 @@ import { defaultRolePermissions, permissionDefinitions } from "@/lib/forum-permi
 import { roleDefinitions } from "@/lib/forum-roles";
 import { defaultForumAppearance } from "@/lib/forum-store";
 
-const DEFAULT_OWNER = {
-  username: "CloudOwner",
-  password: "CloudWorldAdmin1",
-};
+const OWNER_USERNAME = "CloudOwner";
 
 const DEFAULT_STAFF_TEMPLATES = [
   {
@@ -293,7 +290,6 @@ export class DatabaseNotConfiguredError extends Error {
     super("База данных ещё не подключена. Добавьте Neon Postgres к проекту Vercel и выполните повторный деплой.");
   }
 }
-
 export function getForumPool() {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) throw new DatabaseNotConfiguredError();
@@ -469,9 +465,21 @@ async function seedPermissions(client: PoolClient) {
     );
   }
 
+  const communityPermissionKeys = new Set([
+    "forum.private_content.view", "forum.reports.manage", "forum.cases.manage", "forum.polls.manage",
+    "forum.knowledge.manage", "forum.events.manage", "forum.market.manage", "forum.antispam.manage",
+    "forum.thread.merge", "forum.evidence.manage",
+  ]);
   for (const [roleId, permissions] of Object.entries(defaultRolePermissions)) {
     const roleExists = await client.query("SELECT 1 FROM forum_roles WHERE id=$1", [roleId]);
     if (!roleExists.rowCount) continue;
+    for (const permission of permissions.filter((key) => communityPermissionKeys.has(key))) {
+      await client.query(
+        `INSERT INTO forum_role_permissions (role_id, permission_key)
+         VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+        [roleId, permission],
+      );
+    }
     const markerKey = `permission_seed:${roleId}`;
     const marker = await client.query("SELECT 1 FROM forum_settings WHERE key=$1", [markerKey]);
     if (marker.rowCount) continue;
@@ -588,35 +596,22 @@ async function seedSettings(client: PoolClient) {
 }
 
 async function seedOwner(client: PoolClient) {
-  const normalized = DEFAULT_OWNER.username.toLowerCase();
+  const username = process.env.FORUM_OWNER_USERNAME?.trim() || OWNER_USERNAME;
+  const normalized = username.toLowerCase();
   const existing = await client.query<{ id: string }>(
     "SELECT id FROM forum_users WHERE username_normalized=$1 LIMIT 1",
     [normalized],
   );
-  const marker = await client.query(
-    "SELECT 1 FROM forum_settings WHERE key='owner_credentials_v3'",
-  );
-
-  if (!existing.rowCount || !marker.rowCount) {
-    const passwordHash = await hash(DEFAULT_OWNER.password, 12);
-    const owner = await client.query<{ id: string }>(
+  if (!existing.rowCount) {
+    const password = process.env.FORUM_OWNER_PASSWORD?.trim();
+    if (!password || password.length < 12) return;
+    const passwordHash = await hash(password, 12);
+    await client.query<{ id: string }>(
       `INSERT INTO forum_users (id, username, username_normalized, password_hash, role_id, must_change_password, created_at)
        VALUES ('u-owner', $1, $2, $3, 'owner', TRUE, NOW())
-       ON CONFLICT (username_normalized) DO UPDATE SET
-         username=EXCLUDED.username,
-         password_hash=EXCLUDED.password_hash,
-         role_id='owner',
-         must_change_password=TRUE,
-         banned_until=NULL,
-         muted_until=NULL
+       ON CONFLICT (username_normalized) DO NOTHING
        RETURNING id`,
-      [DEFAULT_OWNER.username, normalized, passwordHash],
-    );
-    await client.query("DELETE FROM forum_sessions WHERE user_id=$1", [owner.rows[0].id]);
-    await client.query(
-      `INSERT INTO forum_settings (key,value)
-       VALUES ('owner_credentials_v3','{"applied":true}'::jsonb)
-       ON CONFLICT (key) DO NOTHING`,
+      [username, normalized, passwordHash],
     );
     return;
   }
@@ -722,7 +717,8 @@ const boards = [
   ["donate-help", "appeals", "Проблемы с покупками", "Оплата прошла, но привилегия или товар не были выданы.", "D", "#eab308", 50, 0],
   ["helper-apps", "applications", "Набор в помощники", "Требования, форма заявления и результаты отбора.", "H", "#22c55e", 10, 0],
   ["moderator-apps", "applications", "Набор в модераторы", "Заявления на должность модератора форума и сервера.", "M", "#3b82f6", 20, 0],
-  ["builder-apps", "applications", "Набор в строители", "Портфолио и заявления в строительную команду CloudWorld.", "B", "#f97316", 30, 0],
+  ["cooperation", "applications", "Сотрудничество с проектом", "Партнёрства, медиа, интеграции, авторы контента и деловые предложения.", "C", "#ec4899", 30, 0],
+  ["builder-apps", "applications", "Архив заявок строителей", "Сохранённые старые заявки строительной команды.", "B", "#f97316", 90, 60],
   ["leader-apps", "applications", "Заявки на лидерство", "Заявления на управление кланами, городами и игровыми проектами.", "L", "#a855f7", 40, 0],
   ["clans", "community", "Кланы и гильдии", "Создание кланов, набор участников и дипломатия.", "K", "#ec4899", 10, 0],
   ["towns", "community", "Города и поселения", "Презентации поселений, законы и набор жителей.", "⌂", "#06b6d4", 20, 0],
@@ -814,5 +810,3 @@ async function seedPinnedContent(client: PoolClient) {
   );
   await client.query("INSERT INTO forum_settings (key,value) VALUES ($1,'{\"installed\":true}'::jsonb) ON CONFLICT (key) DO NOTHING", [markerKey]);
 }
-
-export const bootstrapOwner = DEFAULT_OWNER;
