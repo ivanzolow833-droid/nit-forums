@@ -1,8 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Self-contained build for VPS / Docker / Node hosts
-  output: "standalone",
+  // Static export works on Cloudflare Pages (and still on Netlify/Vercel)
+  output: "export",
+  images: {
+    unoptimized: true,
+  },
+  trailingSlash: true,
 };
 
 export default nextConfig;

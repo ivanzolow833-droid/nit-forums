@@ -14,8 +14,8 @@
 
 ## Стек
 
-- Next.js + TypeScript + Tailwind + shadcn/ui
-- Node.js 20+
+- Next.js (static export) + TypeScript + Tailwind + shadcn/ui
+- Node.js 20+ для сборки
 
 ## Локально
 
@@ -26,14 +26,30 @@ npm run dev
 
 Открой http://127.0.0.1:3847
 
-## Деплой
+## Деплой на Cloudflare Pages (бесплатно)
 
-Нужен хост с Node.js (Vercel / VPS). PHP-хостинг не подойдёт.
+Репозиторий уже на GitHub: https://github.com/ivanzolow833-droid/nit-forums
+
+1. Зайди на https://dash.cloudflare.com → **Workers & Pages** → **Create** → **Pages** → **Connect to Git**
+2. Подключи GitHub и выбери **`nit-forums`**
+3. Настройки:
+   - Framework preset: **Next.js (Static HTML Export)** или None
+   - Build command: `npm run build`
+   - Build output directory: `out`
+4. **Save and Deploy**
+5. Получишь ссылку вида `https://nit-forums.pages.dev`
+
+Без Git (с ПК после `npm run build`):
 
 ```bash
-npm ci
-npm run build
-PORT=3847 npm start
+npx wrangler pages deploy out --project-name=cloudworld-forum
 ```
 
-Или Docker — см. `Dockerfile`.
+## Другие хостинги
+
+- **Vercel / Netlify** — тоже ок (тот же репозиторий)
+- Обычный PHP-хостинг — **не подойдёт**, пока не зальёшь содержимое папки `out` как статику
+
+## Роли
+
+Хелпер → Модератор → Админ → Главный админ

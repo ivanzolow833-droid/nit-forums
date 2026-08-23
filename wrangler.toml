@@ -1,0 +1,8 @@
+# Cloudflare Pages
+# Build: npm run build
+# Output directory: out
+# Root: /
+
+name = "cloudworld-forum"
+compatibility_date = "2026-08-23"
+pages_build_output_dir = "out"

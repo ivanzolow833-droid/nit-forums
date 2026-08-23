@@ -20,7 +20,7 @@ git init
 git config user.name "ivanzolow833-droid"
 git config user.email "ivanzolow833-droid@users.noreply.github.com"
 git add .
-git commit -m "CloudWorld forum"
+git commit -m "CloudWorld forum Cloudflare Pages export"
 git branch -M main
 git remote remove origin 2>nul
 git remote add origin https://github.com/ivanzolow833-droid/nit-forums.git
@@ -28,5 +28,6 @@ git push -u origin main --force
 
 echo.
 echo Done. Check: https://github.com/ivanzolow833-droid/nit-forums
+echo Cloudflare Pages: Connect Git - nit-forums - build out/
 echo If browser login opened - sign in to GitHub.
 pause
