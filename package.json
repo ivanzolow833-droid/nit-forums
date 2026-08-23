@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "next dev --port 3847 --hostname 127.0.0.1",
     "build": "next build",
-    "start": "npx --yes serve out -l 3847",
+    "start": "next start -p 3847",
     "lint": "eslint"
   },
   "dependencies": {
