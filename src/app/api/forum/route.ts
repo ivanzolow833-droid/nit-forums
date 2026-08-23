@@ -914,10 +914,10 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   let action = "";
   try {
-    assertSameOrigin(request);
-    await ensureForumDatabase();
     const body = (await request.json()) as Record<string, unknown>;
     action = stringValue(body.action);
+    assertSameOrigin(request);
+    await ensureForumDatabase();
 
     if (action === "register") return await register(request, body);
     if (action === "login") return await login(request, body);
