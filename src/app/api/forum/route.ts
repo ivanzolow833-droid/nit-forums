@@ -39,6 +39,7 @@ import {
 import { getMinecraftServerStatus } from "@/lib/minecraft-status";
 import { hasPermission, permissionDefinitions, type PermissionKey } from "@/lib/forum-permissions";
 import type { RoleDefinition } from "@/lib/forum-roles";
+import { getSignatureImageUrlError } from "@/lib/forum-signature";
 import { defaultForumAppearance, defaultForumUserPreferences } from "@/lib/forum-store";
 import type {
   AuditEntry,
@@ -118,6 +119,23 @@ function jsonValue<T>(value: unknown, fallback: T): T {
     }
   }
   return value as T;
+}
+
+function signatureValue(value: unknown): ForumSignature {
+  const raw = jsonValue<Record<string, unknown>>(value, {});
+  return {
+    text: stringValue(raw.text),
+    color: stringValue(raw.color || "#cbd5e1"),
+    imageUrl: stringValue(raw.imageUrl),
+    slogan: stringValue(raw.slogan),
+    links: Array.isArray(raw.links)
+      ? raw.links.map((item) => {
+        const link = item && typeof item === "object" ? item as Record<string, unknown> : {};
+        return { label: stringValue(link.label), url: stringValue(link.url) };
+      })
+      : [],
+    autoAppend: raw.autoAppend === undefined ? Boolean(raw.enabled) : Boolean(raw.autoAppend),
+  };
 }
 
 function id(prefix: string) {
@@ -605,7 +623,7 @@ async function loadPosts(threadId: string, viewerId: string, canViewInternal: bo
     createdAt: dateValue(row.created_at), editedAt: row.edited_at ? dateValue(row.edited_at) : null, internal: Boolean(row.is_internal),
     privateContent: Boolean(row.is_private),
     signature: Object.keys(jsonValue<Record<string, unknown>>(row.signature_snapshot, {})).length
-      ? jsonValue<ForumSignature>(row.signature_snapshot, { text: "", color: "#cbd5e1", imageUrl: "", slogan: "", links: [], enabled: false }) : null,
+      ? signatureValue(row.signature_snapshot) : null,
     reactions: jsonValue<ReactionSummary[]>(row.reactions, []),
     revisions: jsonValue<ForumPost["revisions"]>(row.revisions, []),
   }));
@@ -647,7 +665,7 @@ async function loadTemplates(user: ForumUser) {
 async function loadSignature(userId: string): Promise<ForumSignature | null> {
   const result = await forumQuery<DbRow>("SELECT * FROM forum_signatures WHERE user_id=$1", [userId]);
   const row = result.rows[0];
-  return row ? { text: stringValue(row.text), color: stringValue(row.color), imageUrl: stringValue(row.image_url), slogan: stringValue(row.slogan), links: jsonValue<ForumSignature["links"]>(row.links, []), enabled: Boolean(row.is_enabled) } : null;
+  return row ? { text: stringValue(row.text), color: stringValue(row.color), imageUrl: stringValue(row.image_url), slogan: stringValue(row.slogan), links: jsonValue<ForumSignature["links"]>(row.links, []), autoAppend: Boolean(row.is_enabled) } : null;
 }
 
 async function loadNotifications(userId: string) {
@@ -894,11 +912,12 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  let action = "";
   try {
     assertSameOrigin(request);
     await ensureForumDatabase();
     const body = (await request.json()) as Record<string, unknown>;
-    const action = stringValue(body.action);
+    action = stringValue(body.action);
 
     if (action === "register") return await register(request, body);
     if (action === "login") return await login(request, body);
@@ -994,7 +1013,7 @@ export async function POST(request: NextRequest) {
     if (!handler) throw new ApiError("Неизвестное действие.");
     return handler();
   } catch (error) {
-    return errorResponse(error);
+    return errorResponse(error, action === "save_signature");
   }
 }
 
@@ -1134,7 +1153,7 @@ async function createPost(user: ForumUser, request: NextRequest, body: Record<st
   const privateContent = Boolean(body.privateContent);
   const postId = id("p");
   await withTransaction(async (client) => {
-    await client.query(`INSERT INTO forum_posts (id,thread_id,author_id,body,is_internal,is_private,signature_snapshot) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)`, [postId, threadId, user.id, text, Boolean(body.internal) && can(user, "forum.audit.view"), privateContent, JSON.stringify(signature?.enabled ? signature : {})]);
+    await client.query(`INSERT INTO forum_posts (id,thread_id,author_id,body,is_internal,is_private,signature_snapshot) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)`, [postId, threadId, user.id, text, Boolean(body.internal) && can(user, "forum.audit.view"), privateContent, JSON.stringify(signature?.autoAppend ? signature : {})]);
     await client.query("UPDATE forum_threads SET updated_at=NOW() WHERE id=$1", [threadId]);
     await client.query("UPDATE forum_users SET posts_count=posts_count+1,points=points+1 WHERE id=$1", [user.id]);
   });
@@ -1665,7 +1684,7 @@ async function applyTemplate(user: ForumUser, request: NextRequest, body: Record
   const signature = await loadSignature(user.id);
   const postId = id("p");
   await withTransaction(async (client) => {
-    await client.query("INSERT INTO forum_posts (id,thread_id,author_id,body,signature_snapshot) VALUES ($1,$2,$3,$4,$5::jsonb)", [postId, threadId, user.id, rendered, JSON.stringify(signature?.enabled ? signature : {})]);
+    await client.query("INSERT INTO forum_posts (id,thread_id,author_id,body,signature_snapshot) VALUES ($1,$2,$3,$4,$5::jsonb)", [postId, threadId, user.id, rendered, JSON.stringify(signature?.autoAppend ? signature : {})]);
     if (template.auto_status_id) await client.query("UPDATE forum_threads SET status=$1 WHERE id=$2", [template.auto_status_id, threadId]);
     if (template.auto_close || template.auto_lock) await client.query("UPDATE forum_threads SET locked=TRUE WHERE id=$1", [threadId]);
     if (template.transfer_role_id) {
@@ -1912,27 +1931,48 @@ async function triageCaseWithAi(user: ForumUser, request: NextRequest, body: Rec
 
 function validateHttpsUrl(value: string, image = false) {
   if (!value) return;
+  if (image) {
+    const imageError = getSignatureImageUrlError(value);
+    if (imageError) throw new ApiError(imageError);
+    return;
+  }
   let url: URL;
   try { url = new URL(value); } catch { throw new ApiError("Некорректная ссылка."); }
   if (url.protocol !== "https:") throw new ApiError("Разрешены только безопасные HTTPS-ссылки.");
   if (value.length > 1000 || /[<>"']/u.test(value)) throw new ApiError("Некорректная ссылка.");
-  if (image && !/\.(png|jpe?g|webp|gif)(\?.*)?$/i.test(url.pathname + url.search)) throw new ApiError("Подпись поддерживает PNG, JPG, WEBP и GIF. SVG запрещён.");
 }
 
 async function saveSignature(user: ForumUser, request: NextRequest, body: Record<string, unknown>) {
   requirePermission(user, "forum.templates.personal");
-  const signature = jsonValue<ForumSignature>(body.signature, { text: "", color: "#cbd5e1", imageUrl: "", slogan: "", links: [], enabled: true });
+  const raw = body.signature && typeof body.signature === "object" && !Array.isArray(body.signature)
+    ? body.signature as Record<string, unknown>
+    : {};
+  const signature: ForumSignature = {
+    text: stringValue(raw.text),
+    color: stringValue(raw.color || "#cbd5e1").trim(),
+    imageUrl: stringValue(raw.imageUrl).trim(),
+    slogan: stringValue(raw.slogan),
+    links: [],
+    autoAppend: raw.autoAppend === undefined ? Boolean(raw.enabled ?? true) : Boolean(raw.autoAppend),
+  };
   if (signature.text.length > 500 || signature.slogan.length > 120) throw new ApiError("Подпись слишком длинная.");
   validateColor(signature.color);
   validateHttpsUrl(signature.imageUrl, true);
-  const links = signature.links.slice(0, 5).map((link) => { validateHttpsUrl(link.url); return { label: stringValue(link.label).slice(0, 40), url: link.url }; });
+  const rawLinks = Array.isArray(raw.links) ? raw.links : [];
+  const links = rawLinks.slice(0, 5).map((value) => {
+    const link = value && typeof value === "object" ? value as Record<string, unknown> : {};
+    const url = stringValue(link.url).trim();
+    validateHttpsUrl(url);
+    return { label: stringValue(link.label).trim().slice(0, 40), url };
+  });
+  signature.links = links;
   await forumQuery(
     `INSERT INTO forum_signatures (user_id,text,color,image_url,slogan,links,is_enabled) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7)
      ON CONFLICT (user_id) DO UPDATE SET text=$2,color=$3,image_url=$4,slogan=$5,links=$6::jsonb,is_enabled=$7,updated_at=NOW()`,
-    [user.id, signature.text, signature.color, signature.imageUrl, signature.slogan, JSON.stringify(links), signature.enabled],
+    [user.id, signature.text, signature.color, signature.imageUrl, signature.slogan, JSON.stringify(links), signature.autoAppend],
   );
-  await audit(request, user, "signature.update", "user", user.id, null, { ...signature, links });
-  return NextResponse.json({ ok: true });
+  await audit(request, user, "signature.update", "user", user.id, null, signature);
+  return NextResponse.json({ success: true, signature });
 }
 
 async function createNotification(userId: string, type: string, title: string, text: string, href: string) {
@@ -2317,10 +2357,11 @@ function isPgUniqueViolation(error: unknown) {
   return Boolean(error && typeof error === "object" && "code" in error && error.code === "23505");
 }
 
-function errorResponse(error: unknown) {
-  if (error instanceof DatabaseNotConfiguredError) return NextResponse.json({ error: error.message, code: "DATABASE_NOT_CONFIGURED" }, { status: 503 });
-  if (error instanceof CommunityFeatureError) return NextResponse.json({ error: error.message }, { status: error.status });
-  if (error instanceof ApiError) return NextResponse.json({ error: error.message }, { status: error.status });
+function errorResponse(error: unknown, signatureAction = false) {
+  const payload = (message: string, extra?: Record<string, unknown>) => signatureAction ? { success: false, error: message, ...extra } : { error: message, ...extra };
+  if (error instanceof DatabaseNotConfiguredError) return NextResponse.json(payload(error.message, { code: "DATABASE_NOT_CONFIGURED" }), { status: 503 });
+  if (error instanceof CommunityFeatureError) return NextResponse.json(payload(error.message), { status: error.status });
+  if (error instanceof ApiError) return NextResponse.json(payload(error.message), { status: error.status });
   console.error("CLOUD WORLD forum API error", error);
-  return NextResponse.json({ error: "Внутренняя ошибка форума. Повторите попытку позже." }, { status: 500 });
+  return NextResponse.json(payload("Внутренняя ошибка форума. Повторите попытку позже."), { status: 500 });
 }

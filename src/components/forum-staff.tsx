@@ -1,14 +1,15 @@
-/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import { useState } from "react";
 import { ClipboardCheck, Copy, FileSignature, History, Pencil, Plus, Search, Save, Star, Trash2, X } from "lucide-react";
 import { RoleBadge, StatusBadge } from "@/components/role-badge";
+import { SignatureImage } from "@/components/signature-image";
 import { ForumOperations } from "@/components/forum-operations";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { runForumAction, type ForumPayload, type ForumSignature, type ForumTemplate } from "@/lib/forum-store";
+import { getSignatureImageUrlError } from "@/lib/forum-signature";
+import { runForumAction, saveForumSignature, type ForumPayload, type ForumSignature, type ForumTemplate } from "@/lib/forum-store";
 
 type StaffTab = "moderation" | "operations" | "templates" | "signature" | "history";
 
@@ -30,7 +31,7 @@ const emptyTemplate: ForumTemplate = {
   variables: [],
 };
 
-const emptySignature: ForumSignature = { text: "", color: "#cbd5e1", imageUrl: "", slogan: "", links: [], enabled: true };
+const emptySignature: ForumSignature = { text: "", color: "#cbd5e1", imageUrl: "", slogan: "", links: [], autoAppend: true };
 
 export function ForumStaffPanel({ payload, onChanged }: { payload: ForumPayload; onChanged: () => Promise<void> }) {
   const [tab, setTab] = useState<StaffTab>("moderation");
@@ -38,16 +39,34 @@ export function ForumStaffPanel({ payload, onChanged }: { payload: ForumPayload;
   const [signature, setSignature] = useState<ForumSignature>(payload.signature ?? emptySignature);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [templateSearch, setTemplateSearch] = useState("");
   const [templateScope, setTemplateScope] = useState<"all" | ForumTemplate["scope"]>("all");
   const user = payload.currentUser;
   if (!user || payload.viewingAsRole || !user.role.permissions.includes("forum.topic.assign")) return null;
 
   async function perform(task: () => Promise<unknown>, after?: () => void) {
-    setBusy(true); setError(null);
+    setBusy(true); setError(null); setNotice(null);
     try { await task(); after?.(); await onChanged(); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "Действие не выполнено."); }
     finally { setBusy(false); }
+  }
+
+  async function saveSignatureChanges() {
+    setError(null); setNotice(null);
+    const imageError = getSignatureImageUrlError(signature.imageUrl);
+    if (imageError) { setError(imageError); return; }
+    setBusy(true);
+    try {
+      const saved = await saveForumSignature({ ...signature, imageUrl: signature.imageUrl.trim() });
+      setSignature(saved);
+      setNotice("Подпись успешно сохранена.");
+      try { await onChanged(); } catch { setNotice("Подпись сохранена, но обновить данные страницы не удалось."); }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Не удалось сохранить подпись. Повторите попытку.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   const ownThreads = payload.recentThreads.filter((thread) => thread.assignment?.userId === user.id);
@@ -65,6 +84,7 @@ export function ForumStaffPanel({ payload, onChanged }: { payload: ForumPayload;
       </div>
     </div>
     {error ? <div className="form-error">{error}</div> : null}
+    {notice ? <div className="form-success">{notice}</div> : null}
 
     {tab === "moderation" && payload.moderation ? <>
       <div className="moderation-grid">
@@ -87,7 +107,7 @@ export function ForumStaffPanel({ payload, onChanged }: { payload: ForumPayload;
       {filteredTemplates.length ? <div className="template-card-grid">{filteredTemplates.map((template) => { const canEdit = template.scope === "personal" ? template.ownerId === user.id : template.scope === "role" ? user.role.permissions.includes("forum.templates.role") : user.role.permissions.includes("forum.templates.global"); return <article key={template.id} className={template.favorite ? "template-card favorite" : "template-card"}><div className="template-card-head"><div><span className="template-scope-pill">{template.scope === "personal" ? "Личный" : template.scope === "role" ? "Для роли" : "Глобальный"}</span><h4>{template.favorite ? <Star className="fill-current" /> : null}{template.title}</h4></div><div className="flex gap-1">{canEdit ? <Button size="icon-sm" variant="outline" className="admin-icon-button" title="Редактировать" onClick={() => setTemplateDraft({ ...template })}><Pencil /></Button> : null}<Button size="icon-sm" variant="outline" className="admin-icon-button" title="Создать личную копию" onClick={() => void perform(() => runForumAction({ action: "duplicate_template", templateId: template.id }))}><Copy /></Button>{canEdit ? <Button size="icon-sm" variant="destructive" title="Удалить" onClick={() => { if (window.confirm(`Удалить шаблон «${template.title}»?`)) void perform(() => runForumAction({ action: "delete_template", templateId: template.id })); }}><Trash2 /></Button> : null}</div></div><p className="template-card-preview">{template.body}</p><div className="template-card-meta"><span>{template.variables.length ? `${template.variables.length} переменных` : "Без переменных"}</span>{template.autoStatusId ? <span>Меняет статус</span> : null}{template.autoClose ? <span>Закрывает тему</span> : null}{template.transferRoleId ? <span>Передаёт дальше</span> : null}</div></article>; })}</div> : <div className="empty-state dark-panel">По этому фильтру шаблонов нет.</div>}
     </div> : null}
 
-    {tab === "signature" ? <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]"><div className="dark-panel space-y-4 p-5"><div className="signature-gif-notice"><FileSignature /><div><strong>GIF-подписи для сотрудников</strong><span>Вставьте прямую HTTPS-ссылку на GIF — анимация появится под каждым вашим официальным ответом.</span></div></div><label className="editor-label">Текст подписи<Textarea rows={5} maxLength={500} value={signature.text} onChange={(event) => setSignature({ ...signature, text: event.target.value })} /></label><div className="grid gap-3 sm:grid-cols-2"><label className="editor-label">Цвет<Input type="color" value={signature.color} onChange={(event) => setSignature({ ...signature, color: event.target.value })} /></label><label className="editor-label">Короткий слоган<Input maxLength={120} value={signature.slogan} onChange={(event) => setSignature({ ...signature, slogan: event.target.value })} /></label></div><label className="editor-label">Прямая HTTPS-ссылка на PNG/JPG/WEBP/GIF<Input value={signature.imageUrl} onChange={(event) => setSignature({ ...signature, imageUrl: event.target.value })} placeholder="https://.../signature.gif" /></label><label className="setting-line"><input type="checkbox" checked={signature.enabled} onChange={(event) => setSignature({ ...signature, enabled: event.target.checked })} /> Автоматически добавлять после ответа</label><Button disabled={busy} className="w-full bg-red-600 font-bold hover:bg-red-500" onClick={() => void perform(() => runForumAction({ action: "save_signature", signature }))}><Save /> Сохранить подпись</Button></div><div className="dark-panel p-5"><div className="sidebar-label">Предпросмотр</div><SignaturePreview signature={signature} role={user.role.label} /></div></div> : null}
+    {tab === "signature" ? <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]"><div className="dark-panel space-y-4 p-5"><div className="signature-gif-notice"><FileSignature /><div><strong>GIF-подписи для сотрудников</strong><span>Вставьте прямую HTTPS-ссылку на GIF — анимация появится под каждым вашим официальным ответом.</span></div></div><label className="editor-label">Текст подписи<Textarea rows={5} maxLength={500} value={signature.text} onChange={(event) => setSignature({ ...signature, text: event.target.value })} /></label><div className="grid gap-3 sm:grid-cols-2"><label className="editor-label">Цвет<Input type="color" value={signature.color} onChange={(event) => setSignature({ ...signature, color: event.target.value })} /></label><label className="editor-label">Короткий слоган<Input maxLength={120} value={signature.slogan} onChange={(event) => setSignature({ ...signature, slogan: event.target.value })} /></label></div><label className="editor-label">Прямая HTTPS-ссылка на PNG/JPG/WEBP/GIF<Input type="url" maxLength={1000} value={signature.imageUrl} onChange={(event) => setSignature({ ...signature, imageUrl: event.target.value })} placeholder="https://.../signature.gif" /></label><label className="setting-line"><input type="checkbox" checked={signature.autoAppend} onChange={(event) => setSignature({ ...signature, autoAppend: event.target.checked })} /> Автоматически добавлять после ответа</label><Button disabled={busy} className="w-full bg-red-600 font-bold hover:bg-red-500" onClick={() => void saveSignatureChanges()}><Save /> Сохранить подпись</Button></div><div className="dark-panel p-5"><div className="sidebar-label">Предпросмотр</div><SignaturePreview signature={signature} role={user.role.label} /></div></div> : null}
 
     {tab === "history" ? <div className="dark-panel overflow-hidden"><div className="panel-title"><History /> Мои действия</div><div className="audit-table">{payload.audit.filter((entry) => entry.actorName === user.username).map((entry) => <div className="audit-row" key={entry.id}><div><strong>{entry.action}</strong><span>{entry.objectType}</span></div><code>{entry.objectId}</code><time>{formatDate(entry.createdAt)}</time></div>)}</div></div> : null}
 
@@ -97,7 +117,7 @@ export function ForumStaffPanel({ payload, onChanged }: { payload: ForumPayload;
 
 function Metric({ label, value, accent }: { label: string; value: string | number; accent: string }) { return <div className="moderation-metric" style={{ borderTopColor: accent }}><strong>{value}</strong><span>{label}</span></div>; }
 
-function SignaturePreview({ signature, role }: { signature: ForumSignature; role: string }) { return <div className="signature-card" style={{ borderLeftColor: signature.color }}><strong style={{ color: signature.color }}>{signature.slogan || role}</strong>{signature.text ? <p>{signature.text}</p> : null}{signature.imageUrl ? <img src={signature.imageUrl} alt="Изображение подписи" /> : null}<small>{role}</small></div>; }
+function SignaturePreview({ signature, role }: { signature: ForumSignature; role: string }) { return <div className="signature-card" style={{ borderLeftColor: signature.color }}><strong style={{ color: signature.color }}>{signature.slogan || role}</strong>{signature.text ? <p>{signature.text}</p> : null}{signature.imageUrl ? <SignatureImage src={signature.imageUrl} alt="Изображение подписи" /> : null}<small>{role}</small></div>; }
 
 function TemplateEditor({ template, payload, busy, onChange, onClose, onSave }: { template: ForumTemplate; payload: ForumPayload; busy: boolean; onChange: (template: ForumTemplate) => void; onClose: () => void; onSave: () => void }) {
   const canRole = payload.currentUser?.role.permissions.includes("forum.templates.role");

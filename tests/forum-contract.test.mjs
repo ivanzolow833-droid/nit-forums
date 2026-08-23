@@ -196,3 +196,28 @@ test("recent thread query has no untyped parameter gap", async () => {
   assert.match(handler, /values\.push\(manageHidden\)/);
   assert.doesNotMatch(handler, /\[viewerId, role\.rank, value, manageHidden\]/);
 });
+
+test("signature save has a stable JSON contract and resilient client parsing", async () => {
+  const [route, store, signature, staff, image] = await Promise.all([
+    source("src/app/api/forum/route.ts"),
+    source("src/lib/forum-store.ts"),
+    source("src/lib/forum-signature.ts"),
+    source("src/components/forum-staff.tsx"),
+    source("src/components/signature-image.tsx"),
+  ]);
+  assert.match(route, /NextResponse\.json\(\{ success: true, signature \}\)/);
+  assert.match(route, /errorResponse\(error, action === "save_signature"\)/);
+  assert.match(route, /signatureAction \? \{ success: false, error: message/);
+  assert.match(route, /signature\.autoAppend/);
+  assert.match(store, /if \(!response\.ok\)/);
+  assert.match(store, /await response\.text\(\)/);
+  assert.match(store, /Сервер вернул пустой ответ/);
+  assert.doesNotMatch(store, /await response\.json\(\)/);
+  assert.match(signature, /parsed\.protocol !== "https:"/);
+  assert.match(signature, /SUPPORTED_IMAGE_PATH\.test\(parsed\.pathname\)/);
+  assert.match(signature, /Укажите прямую ссылку на изображение, а не страницу сайта/);
+  assert.match(staff, /saveForumSignature/);
+  assert.match(staff, /maxLength=\{1000\}/);
+  assert.match(image, /onError=\{\(\) => setState\("error"\)\}/);
+  assert.match(image, /Изображение подписи не загрузилось/);
+});

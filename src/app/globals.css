@@ -182,6 +182,7 @@
 .admin-tab:hover { background: rgba(255,255,255,.025); color: white; }
 .admin-tab.active { background: rgba(239,51,71,.09); color: #ff5d6d; }
 .form-error { border: 1px solid rgba(239,68,68,.25); border-radius: .45rem; background: rgba(239,68,68,.08); padding: .75rem 1rem; font-size: .75rem; color: #ff8792; }
+.form-success { border: 1px solid rgba(34,197,94,.25); border-radius: .45rem; background: rgba(34,197,94,.08); padding: .75rem 1rem; font-size: .75rem; color: #86efac; }
 .loading-line { height: 2px; overflow: hidden; border-radius: 99px; background: rgba(255,255,255,.05); }
 .loading-line::after { display: block; height: 100%; width: 38%; content: ""; background: linear-gradient(90deg,transparent,#ef3347,transparent); animation: loading-line 1.1s linear infinite; }
 
@@ -273,6 +274,13 @@
 .signature-card strong { font-size: .72rem; }
 .signature-card p { margin-top: .35rem; white-space: pre-wrap; font-size: .68rem; line-height: 1.6; color: rgba(255,255,255,.43); }
 .signature-card img { display: block; max-height: 150px; max-width: 100%; margin-top: .55rem; border-radius: .3rem; object-fit: contain; }
+.signature-image-shell { margin-top: .55rem; }
+.signature-image-shell img { margin-top: 0; }
+.signature-image-shell img.signature-image-hidden { display: none; }
+.signature-image-placeholder { display: flex; min-height: 74px; align-items: center; justify-content: center; gap: .5rem; border: 1px dashed rgba(148,163,184,.2); border-radius: .4rem; background: rgba(148,163,184,.05); padding: .8rem; color: rgba(255,255,255,.42); }
+.signature-image-placeholder.error { border-color: rgba(239,68,68,.24); background: rgba(239,68,68,.05); color: #fca5a5; }
+.signature-image-placeholder svg { width: 1rem; height: 1rem; flex: 0 0 auto; }
+.signature-image-placeholder span { font-size: .65rem; }
 .signature-card a { display: inline-block; margin-right: .65rem; margin-top: .5rem; font-size: .6rem; color: #60a5fa; }
 .revision-box { margin-top: .75rem; border: 1px solid rgba(255,255,255,.06); border-radius: .35rem; background: rgba(0,0,0,.14); padding: .65rem; }
 .revision-box > button { display: flex; align-items: center; gap: .35rem; font-size: .6rem; color: rgba(255,255,255,.4); }

@@ -219,7 +219,7 @@ export type ForumSignature = {
   imageUrl: string;
   slogan: string;
   links: { label: string; url: string }[];
-  enabled: boolean;
+  autoAppend: boolean;
 };
 
 export type ForumPost = {
@@ -540,11 +540,29 @@ export async function loadForum(params?: { boardId?: string; threadId?: string; 
   if (params?.dateFrom) search.set("dateFrom", params.dateFrom);
   const suffix = search.size ? `?${search.toString()}` : "";
   const response = await fetch(`/api/forum${suffix}`, { cache: "no-store" });
-  const data = (await response.json()) as ForumPayload & { error?: string };
   if (!response.ok) {
+    const data = await readForumResponse<ForumPayload & { error?: string }>(response, "Не удалось загрузить форум.");
     throw new ForumRequestError(data.error ?? "Не удалось загрузить форум.", response.status);
   }
-  return data;
+  return readForumResponse<ForumPayload & { error?: string }>(response, "Не удалось загрузить форум.");
+}
+
+async function readForumResponse<T extends { error?: string }>(response: Response, fallbackError: string): Promise<T> {
+  const rawBody = await response.text();
+  if (!rawBody.trim()) {
+    throw new ForumRequestError(
+      response.ok ? "Сервер вернул пустой ответ. Повторите попытку." : `${fallbackError} Сервер вернул пустой ответ.`,
+      response.status,
+    );
+  }
+  try {
+    return JSON.parse(rawBody) as T;
+  } catch {
+    throw new ForumRequestError(
+      response.ok ? "Сервер вернул некорректный ответ. Повторите попытку." : `${fallbackError} Ответ сервера имеет неверный формат.`,
+      response.status,
+    );
+  }
 }
 
 export async function runForumAction(action: ForumAction) {
@@ -553,9 +571,18 @@ export async function runForumAction(action: ForumAction) {
     headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken() },
     body: JSON.stringify(action),
   });
-  const data = (await response.json()) as { ok?: boolean; error?: string; id?: string; missingVariables?: string[]; suggestions?: ForumAiSuggestion[]; triage?: ForumAiTriage };
+  type ActionResponse = { ok?: boolean; success?: boolean; error?: string; id?: string; signature?: ForumSignature; missingVariables?: string[]; suggestions?: ForumAiSuggestion[]; triage?: ForumAiTriage };
   if (!response.ok) {
+    const data = await readForumResponse<ActionResponse>(response, "Действие не выполнено.");
     throw new ForumRequestError(data.error ?? "Действие не выполнено.", response.status);
   }
+  const data = await readForumResponse<ActionResponse>(response, "Действие не выполнено.");
+  if (data.success === false) throw new ForumRequestError(data.error ?? "Действие не выполнено.", response.status);
   return data;
+}
+
+export async function saveForumSignature(signature: ForumSignature) {
+  const data = await runForumAction({ action: "save_signature", signature });
+  if (!data.success || !data.signature) throw new ForumRequestError(data.error ?? "Подпись не была сохранена.");
+  return data.signature;
 }
