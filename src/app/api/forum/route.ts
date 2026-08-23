@@ -460,7 +460,7 @@ async function loadSections(effectiveRole: RoleDefinition, manage: boolean) {
          FROM forum_threads t2 JOIN forum_users u ON u.id=t2.author_id JOIN forum_roles r ON r.id=u.role_id
          WHERE t2.board_id=b.id AND t2.deleted_at IS NULL ORDER BY t2.updated_at DESC LIMIT 1
        ) l ON TRUE
-       LEFT JOIN forum_topic_statuses ts ON ts.id=l.latest_status
+       LEFT JOIN forum_topic_statuses ts ON ts.id=l.status
        WHERE b.deleted_at IS NULL AND s.deleted_at IS NULL
          AND ($1::boolean = TRUE OR (b.is_hidden=FALSE AND s.is_hidden=FALSE AND b.visibility_min_rank <= $2 AND (s.is_staff_only=FALSE OR $2 >= 10)))
        GROUP BY b.id,l.id,l.title,l.status,l.updated_at,l.author_name,
