@@ -15,13 +15,13 @@ export const quickLinks = [
   { id: "donate", label: "Магазин привилегий", href: "https://cloudeworld.trademc.org/", hint: "Донат CloudWorld" },
 ] as const;
 
-export const statusLabels = {
+export const statusLabels: Record<string, string> = {
   open: "Открыто",
   important: "Важно",
   review: "На рассмотрении",
   rejected: "Отказано",
   resolved: "Решено",
   closed: "Закрыто",
-} as const;
+};
 
-export type ThreadStatus = keyof typeof statusLabels;
+export type ThreadStatus = string;

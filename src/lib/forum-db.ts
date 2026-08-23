@@ -2,6 +2,8 @@ import "server-only";
 
 import { hash } from "bcryptjs";
 import { Pool, type PoolClient, type QueryResultRow } from "pg";
+import { runForumMigrations } from "@/lib/forum-migrations";
+import { defaultRolePermissions, permissionDefinitions } from "@/lib/forum-permissions";
 import { roleDefinitions } from "@/lib/forum-roles";
 
 const DEFAULT_OWNER = {
@@ -61,8 +63,17 @@ async function initializeForumDatabase() {
   try {
     await client.query("BEGIN");
     await createSchema(client);
+    await runForumMigrations(client);
     await seedRoles(client);
+    await seedPermissions(client);
+    await seedTopicStatuses(client);
+    await seedReactionTypes(client);
+    await seedTagsAndAchievements(client);
+    await seedIntegrations(client);
+    await seedSettings(client);
     await seedOwner(client);
+    await syncPrimaryUserRoles(client);
+    await purgeExpiredTrash(client);
     await seedForumStructure(client);
     await seedForumThreads(client);
     await client.query("COMMIT");
@@ -161,19 +172,145 @@ async function seedRoles(client: PoolClient) {
   for (const role of roleDefinitions) {
     await client.query(
       `INSERT INTO forum_roles
-        (id, label, short_label, description, color, rank, can_moderate, can_manage_forum, can_manage_roles)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-       ON CONFLICT (id) DO UPDATE SET
-         label = EXCLUDED.label,
-         short_label = EXCLUDED.short_label,
-         description = EXCLUDED.description,
-         color = EXCLUDED.color,
-         rank = EXCLUDED.rank,
-         can_moderate = EXCLUDED.can_moderate,
-         can_manage_forum = EXCLUDED.can_manage_forum,
-         can_manage_roles = EXCLUDED.can_manage_roles`,
-      [role.id, role.label, role.shortLabel, role.description, role.color, role.rank, role.canModerate, role.canManageForum, role.canManageRoles],
+        (id, label, short_label, description, color, gradient, icon, badge, rank,
+         is_enabled, show_in_profile, show_near_posts, show_in_users,
+         can_moderate, can_manage_forum, can_manage_roles)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+       ON CONFLICT (id) DO NOTHING`,
+      [
+        role.id, role.label, role.shortLabel, role.description, role.color,
+        role.gradient, role.icon, role.badge, role.rank, role.enabled,
+        role.showInProfile, role.showNearPosts, role.showInUsers,
+        role.canModerate, role.canManageForum, role.canManageRoles,
+      ],
     );
+  }
+}
+
+async function seedPermissions(client: PoolClient) {
+  for (const [key, label, category] of permissionDefinitions) {
+    await client.query(
+      `INSERT INTO forum_permissions (key, label, category)
+       VALUES ($1,$2,$3)
+       ON CONFLICT (key) DO UPDATE SET label = EXCLUDED.label, category = EXCLUDED.category`,
+      [key, label, category],
+    );
+  }
+
+  for (const [roleId, permissions] of Object.entries(defaultRolePermissions)) {
+    const roleExists = await client.query("SELECT 1 FROM forum_roles WHERE id=$1", [roleId]);
+    if (!roleExists.rowCount) continue;
+    const markerKey = `permission_seed:${roleId}`;
+    const marker = await client.query("SELECT 1 FROM forum_settings WHERE key=$1", [markerKey]);
+    if (marker.rowCount) continue;
+    const existing = await client.query("SELECT 1 FROM forum_role_permissions WHERE role_id=$1 LIMIT 1", [roleId]);
+    if (existing.rowCount) {
+      await client.query("INSERT INTO forum_settings (key,value) VALUES ($1,'{\"seeded\":true}'::jsonb) ON CONFLICT (key) DO NOTHING", [markerKey]);
+      continue;
+    }
+    for (const permission of permissions) {
+      await client.query(
+        `INSERT INTO forum_role_permissions (role_id, permission_key)
+         VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+        [roleId, permission],
+      );
+    }
+    await client.query("INSERT INTO forum_settings (key,value) VALUES ($1,'{\"seeded\":true}'::jsonb) ON CONFLICT (key) DO NOTHING", [markerKey]);
+  }
+}
+
+async function seedTopicStatuses(client: PoolClient) {
+  const statuses = [
+    ["open", "Открыто", "#60a5fa", 10, true],
+    ["review", "На рассмотрении", "#fbbf24", 20, true],
+    ["resolved", "Рассмотрено", "#4ade80", 30, true],
+    ["punished", "Наказание выдано", "#ef4444", 40, true],
+    ["unpunished", "Наказание снято", "#38bdf8", 50, true],
+    ["evidence", "Требуются доказательства", "#fb923c", 60, true],
+    ["transferred", "Передано", "#a78bfa", 70, true],
+    ["rejected", "Отказано", "#fb7185", 80, true],
+    ["closed", "Закрыто", "#64748b", 90, true],
+    ["important", "Важно", "#ff6978", 5, true],
+  ] as const;
+  for (const status of statuses) {
+    await client.query(
+      `INSERT INTO forum_topic_statuses (id,label,color,sort_order,is_system)
+       VALUES ($1,$2,$3,$4,$5) ON CONFLICT (id) DO NOTHING`,
+      [...status],
+    );
+  }
+}
+
+async function seedReactionTypes(client: PoolClient) {
+  const reactions = [
+    ["like", "Нравится", "👍", 10],
+    ["love", "Любовь", "❤️", 20],
+    ["laugh", "Смешно", "😂", 30],
+    ["dislike", "Не нравится", "👎", 40],
+    ["star", "Полезно", "⭐", 50],
+  ] as const;
+  for (const reaction of reactions) {
+    await client.query(
+      `INSERT INTO forum_reaction_types (id,label,emoji,sort_order)
+       VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO NOTHING`,
+      [...reaction],
+    );
+  }
+}
+
+async function seedTagsAndAchievements(client: PoolClient) {
+  const tags = [
+    ["cheats", "Читы", "#ef4444", 10],
+    ["fraud", "Обман", "#f97316", 20],
+    ["bug", "Баг", "#eab308", 30],
+    ["donate", "Донат", "#22c55e", 40],
+    ["appeal", "Апелляция", "#3b82f6", 50],
+    ["report", "Жалоба", "#e11d48", 60],
+    ["technical", "Техническая проблема", "#64748b", 70],
+    ["suggestion", "Предложение", "#a855f7", 80],
+  ] as const;
+  for (const tag of tags) {
+    await client.query(
+      `INSERT INTO forum_tags (id,label,color,sort_order)
+       VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO NOTHING`,
+      [...tag],
+    );
+  }
+
+  const achievements = [
+    ["veteran", "Старожил", "Участник проекта больше года.", "◆", 100],
+    ["active", "Активный участник", "Опубликовал 100 сообщений.", "⚡", 75],
+    ["helpful", "Полезный пользователь", "Получил 50 положительных реакций.", "★", 100],
+    ["community_helper", "Помощник сообщества", "Регулярно помогает другим игрокам.", "♥", 125],
+  ] as const;
+  for (const achievement of achievements) {
+    await client.query(
+      `INSERT INTO forum_achievements (id,label,description,icon,points)
+       VALUES ($1,$2,$3,$4,$5) ON CONFLICT (id) DO NOTHING`,
+      [...achievement],
+    );
+  }
+}
+
+async function seedIntegrations(client: PoolClient) {
+  const providers = ["discord", "telegram", "minecraft", "luckperms"];
+  for (const provider of providers) {
+    await client.query(
+      `INSERT INTO forum_integrations (id,provider,event_types,is_enabled)
+       VALUES ($1,$1,ARRAY['new_report','topic_transfer','punishment'],FALSE)
+       ON CONFLICT (id) DO NOTHING`,
+      [provider],
+    );
+  }
+}
+
+async function seedSettings(client: PoolClient) {
+  const settings = [
+    ["trash_retention", { days: 30 }],
+    ["antispam", { postCooldownSeconds: 3, topicsPerHour: 5, maxLinks: 6, maxMentions: 10 }],
+  ] as const;
+  for (const [key, value] of settings) {
+    await client.query("INSERT INTO forum_settings (key,value) VALUES ($1,$2::jsonb) ON CONFLICT (key) DO NOTHING", [key, JSON.stringify(value)]);
   }
 }
 
@@ -185,6 +322,27 @@ async function seedOwner(client: PoolClient) {
      ON CONFLICT (username_normalized) DO UPDATE SET role_id = 'owner'`,
     [DEFAULT_OWNER.username, DEFAULT_OWNER.username.toLowerCase(), passwordHash],
   );
+}
+
+async function syncPrimaryUserRoles(client: PoolClient) {
+  await client.query(`
+    INSERT INTO forum_user_roles (user_id, role_id, is_primary)
+    SELECT id, role_id, TRUE FROM forum_users
+    ON CONFLICT (user_id, role_id) DO UPDATE SET is_primary = TRUE
+  `);
+}
+
+async function purgeExpiredTrash(client: PoolClient) {
+  const expired = await client.query<{ id: string; item_type: string; item_id: string }>(
+    "SELECT id,item_type,item_id FROM forum_trash WHERE purge_after<=NOW() LIMIT 200",
+  );
+  for (const item of expired.rows) {
+    if (item.item_type === "post") await client.query("DELETE FROM forum_posts WHERE id=$1", [item.item_id]);
+    else if (item.item_type === "thread") await client.query("DELETE FROM forum_threads WHERE id=$1", [item.item_id]);
+    else if (item.item_type === "board") await client.query("DELETE FROM forum_boards WHERE id=$1", [item.item_id]);
+    else if (item.item_type === "section") await client.query("DELETE FROM forum_sections WHERE id=$1", [item.item_id]);
+    await client.query("DELETE FROM forum_trash WHERE id=$1", [item.id]);
+  }
 }
 
 const sections = [
