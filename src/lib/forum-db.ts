@@ -5,6 +5,7 @@ import { Pool, type PoolClient, type QueryResultRow } from "pg";
 import { runForumMigrations } from "@/lib/forum-migrations";
 import { defaultRolePermissions, permissionDefinitions } from "@/lib/forum-permissions";
 import { roleDefinitions } from "@/lib/forum-roles";
+import { defaultForumAppearance } from "@/lib/forum-store";
 
 const DEFAULT_OWNER = {
   username: "CloudOwner",
@@ -346,6 +347,7 @@ async function initializeForumDatabase() {
     await purgeExpiredTrash(client);
     await seedForumStructure(client);
     await seedForumThreads(client);
+    await seedPinnedContent(client);
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
@@ -578,6 +580,7 @@ async function seedSettings(client: PoolClient) {
   const settings = [
     ["trash_retention", { days: 30 }],
     ["antispam", { postCooldownSeconds: 3, topicsPerHour: 5, maxLinks: 6, maxMentions: 10 }],
+    ["appearance", defaultForumAppearance],
   ] as const;
   for (const [key, value] of settings) {
     await client.query("INSERT INTO forum_settings (key,value) VALUES ($1,$2::jsonb) ON CONFLICT (key) DO NOTHING", [key, JSON.stringify(value)]);
@@ -770,6 +773,46 @@ async function seedForumThreads(client: PoolClient) {
      VALUES ('p-welcome', 't-welcome', 'u-owner', 'Владелец проекта и администрация будут публиковать здесь подтверждённую информацию. Не передавайте никому пароль от аккаунта.', NOW() - INTERVAL '5 hours')
      ON CONFLICT (id) DO NOTHING`,
   );
+}
+
+async function seedPinnedContent(client: PoolClient) {
+  const markerKey = "pinned_content_v1";
+  const marker = await client.query("SELECT 1 FROM forum_settings WHERE key=$1", [markerKey]);
+  if (marker.rowCount) return;
+  await client.query("UPDATE forum_threads SET pinned=TRUE WHERE id=ANY($1::text[])", [["t-welcome", "t-rules", "t-update"]]);
+  await client.query(
+    `UPDATE forum_threads SET body=$1,updated_at=NOW()
+     WHERE id='t-rules' AND body=$2`,
+    [
+      `1. Уважение и общение
+Запрещены оскорбления, травля, разжигание конфликтов, угрозы и публикация чужих личных данных.
+
+2. Честная игра
+Запрещены читы, вредоносные модификации, использование уязвимостей и передача средств, полученных нечестным способом.
+
+3. Форум и сообщения
+Запрещены спам, флуд, одинаковые темы, бессодержательные ответы, опасные ссылки и намеренное введение участников в заблуждение.
+
+4. Жалобы
+Жалоба должна содержать ники участников, понятное описание ситуации, дату и доказательства. Обрезанные или недоступные материалы могут быть отклонены.
+
+5. Доказательства
+Материалы должны относиться к рассматриваемой ситуации, позволять определить участников и не содержать следов подделки. Сотрудник вправе запросить оригинал или дополнительные материалы.
+
+6. Решения администрации
+Окончательный вердикт принимает уполномоченный сотрудник. AI-помощник и шаблоны не являются самостоятельным решением и используются только для подготовки ответа.
+
+7. Обжалование
+Если вы не согласны с решением, используйте раздел обжалований, укажите ссылку на исходную тему и добавьте новые обстоятельства. Повторные темы без новых данных могут быть закрыты.
+
+8. Торговля и безопасность
+Не передавайте пароли и коды подтверждения. Администрация не просит секретные данные. Рискованные сделки проводите только через официальные механизмы проекта.
+
+Владелец может дополнять и уточнять правила через редактирование этой закреплённой темы.`,
+      "Уважайте участников, не используйте запрещённые модификации, не обманывайте при сделках и прикладывайте доказательства к жалобам.",
+    ],
+  );
+  await client.query("INSERT INTO forum_settings (key,value) VALUES ($1,'{\"installed\":true}'::jsonb) ON CONFLICT (key) DO NOTHING", [markerKey]);
 }
 
 export const bootstrapOwner = DEFAULT_OWNER;

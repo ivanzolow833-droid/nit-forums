@@ -2,27 +2,29 @@
 
 import { ExternalLink, Server, Shield, UsersRound } from "lucide-react";
 import { RoleBadge } from "@/components/role-badge";
-import { quickLinks, site } from "@/lib/forum-data";
-import type { ForumUser } from "@/lib/forum-store";
+import { quickLinks } from "@/lib/forum-data";
+import type { ForumAppearanceSettings, ForumUser } from "@/lib/forum-store";
 import type { RoleDefinition } from "@/lib/forum-roles";
 
 export function ForumSidebar({
   user,
   roles,
   members,
+  appearance,
 }: {
   user: ForumUser | null;
   roles: RoleDefinition[];
   members: number;
+  appearance: ForumAppearanceSettings;
 }) {
   return (
-    <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
+    <aside className="forum-context-sidebar space-y-4 lg:sticky lg:top-24 lg:self-start">
       <section className="dark-panel overflow-hidden">
-        <div className="panel-title"><Server /> Сервер CloudWorld</div>
+        <div className="panel-title"><Server /> {appearance.serverName}</div>
         <div className="space-y-4 p-4">
           <div>
             <div className="sidebar-label">Адрес сервера</div>
-            <div className="mt-1 font-mono text-base font-bold text-white">{site.ip}</div>
+            <div className="mt-1 font-mono text-base font-bold text-white">{appearance.serverIp}</div>
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div className="sidebar-stat"><strong>{members}</strong><span>участников</span></div>

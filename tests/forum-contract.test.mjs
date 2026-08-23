@@ -105,3 +105,28 @@ test("AI suggestions use server-side Groq structured output and never auto-post"
   assert.match(handler, /ровно три готовых варианта/);
   assert.doesNotMatch(handler, /INSERT INTO forum_posts/);
 });
+
+test("personal appearance and owner branding are persistent server actions", async () => {
+  const [route, store, database] = await Promise.all([
+    source("src/app/api/forum/route.ts"),
+    source("src/lib/forum-store.ts"),
+    source("src/lib/forum-db.ts"),
+  ]);
+  assert.match(store, /action: "save_preferences"/);
+  assert.match(store, /action: "save_forum_settings"; trashRetentionDays: number; appearance: ForumAppearanceSettings/);
+  assert.match(route, /async function savePreferences/);
+  assert.match(route, /async function saveForumSettings/);
+  assert.match(route, /UPDATE forum_users SET settings=\$1::jsonb/);
+  assert.match(database, /pinned_content_v1/);
+  assert.match(database, /UPDATE forum_threads SET pinned=TRUE/);
+});
+
+test("rich editor exposes real undo, redo and preview controls", async () => {
+  const editor = await source("src/components/forum-rich-editor.tsx");
+  assert.match(editor, /function undo\(\)/);
+  assert.match(editor, /function redo\(\)/);
+  assert.match(editor, /historyIndex\.current -= 1/);
+  assert.match(editor, /historyIndex\.current \+= 1/);
+  assert.match(editor, /Ctrl\+Z/);
+  assert.match(editor, /Предпросмотр/);
+});

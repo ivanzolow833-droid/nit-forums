@@ -10,12 +10,14 @@ import {
 } from "@/lib/forum-db";
 import { hasPermission, permissionDefinitions, type PermissionKey } from "@/lib/forum-permissions";
 import type { RoleDefinition } from "@/lib/forum-roles";
+import { defaultForumAppearance, defaultForumUserPreferences } from "@/lib/forum-store";
 import type {
   AuditEntry,
   ConversationMessage,
   ConversationSummary,
   ForumAssignment,
   ForumAiSuggestion,
+  ForumAppearanceSettings,
   ForumBoard,
   ForumFormField,
   ForumIntegration,
@@ -28,6 +30,7 @@ import type {
   ForumTemplate,
   ForumThread,
   ForumUser,
+  ForumUserPreferences,
   ModerationStats,
   ReactionSummary,
   ReactionTypeDefinition,
@@ -125,6 +128,7 @@ function userColumns(alias: string, roleAlias: string, prefix: string) {
     ${alias}.points AS ${prefix}points,
     ${alias}.reactions_count AS ${prefix}reactions_count,
     ${alias}.posts_count AS ${prefix}posts_count,
+    ${alias}.settings AS ${prefix}settings,
     COALESCE((SELECT jsonb_agg(jsonb_build_object(
       'id',a.id,'label',a.label,'description',a.description,'icon',a.icon,'points',a.points,'awardedAt',ua.awarded_at
     ) ORDER BY ua.awarded_at DESC) FROM forum_user_achievements ua JOIN forum_achievements a ON a.id=ua.achievement_id
@@ -158,6 +162,7 @@ function mapRole(row: DbRow, prefix = "role_"): RoleDefinition {
 }
 
 function mapUser(row: DbRow, prefix = "author_"): ForumUser {
+  const storedPreferences = jsonValue<Partial<ForumUserPreferences>>(row[`${prefix}settings`], {});
   return {
     id: stringValue(row[`${prefix}id`]),
     username: stringValue(row[`${prefix}name`]),
@@ -169,6 +174,7 @@ function mapUser(row: DbRow, prefix = "author_"): ForumUser {
     reactionsCount: numberValue(row[`${prefix}reactions_count`]),
     postsCount: numberValue(row[`${prefix}posts_count`]),
     achievements: jsonValue<ForumUser["achievements"]>(row[`${prefix}achievements`], []).map((achievement) => ({ ...achievement, awardedAt: dateValue(achievement.awardedAt) })),
+    preferences: { ...defaultForumUserPreferences, ...storedPreferences },
     role: mapRole(row, `${prefix}role_`),
   };
 }
@@ -685,9 +691,14 @@ async function loadIntegrations(user: ForumUser) {
 }
 
 async function loadForumSettings() {
-  const result = await forumQuery<DbRow>("SELECT value FROM forum_settings WHERE key='trash_retention'");
-  const value = jsonValue<{ days?: number }>(result.rows[0]?.value, { days: 30 });
-  return { trashRetentionDays: Math.max(1, Math.min(3650, numberValue(value.days) || 30)) };
+  const result = await forumQuery<DbRow>("SELECT key,value FROM forum_settings WHERE key IN ('trash_retention','appearance')");
+  const values = Object.fromEntries(result.rows.map((row) => [stringValue(row.key), row.value]));
+  const retention = jsonValue<{ days?: number }>(values.trash_retention, { days: 30 });
+  const appearance = jsonValue<Partial<ForumAppearanceSettings>>(values.appearance, {});
+  return {
+    trashRetentionDays: Math.max(1, Math.min(3650, numberValue(retention.days) || 30)),
+    appearance: { ...defaultForumAppearance, ...appearance },
+  };
 }
 
 async function loadSearch(query: string, role: RoleDefinition, filters: { status: string; tag: string; role: string; dateFrom: string }): Promise<SearchResult[]> {
@@ -893,6 +904,8 @@ export async function POST(request: NextRequest) {
       toggle_follow: () => toggleFollow(session.user, body),
       moderate_user: () => moderateUser(session.user, request, body),
       save_profile: () => saveProfile(session.user, request, body),
+      save_preferences: () => savePreferences(session.user, request, body),
+      mark_forum_read: () => markForumRead(session.user),
       save_draft: () => saveDraft(session.user, body),
       delete_draft: () => deleteDraft(session.user, body),
       save_tag: () => saveTag(session.user, request, body),
@@ -1957,8 +1970,46 @@ async function saveProfile(user: ForumUser, request: NextRequest, body: Record<s
   const avatarUrl = stringValue(body.avatarUrl).trim(); const bio = stringValue(body.bio).trim();
   if (avatarUrl) validateHttpsUrl(avatarUrl, true);
   if (bio.length > 500) throw new ApiError("Описание профиля: максимум 500 символов.");
-  await forumQuery("UPDATE forum_users SET avatar_url=$1,bio=$2 WHERE id=$3", [avatarUrl, bio, user.id]);
-  await audit(request, user, "profile.update", "user", user.id, null, { avatarUrl, bio });
+  const profileBannerUrl = stringValue(body.profileBannerUrl).trim();
+  if (profileBannerUrl) validateHttpsUrl(profileBannerUrl, true);
+  const profileAccent = stringValue(body.profileAccent).trim();
+  validateColor(profileAccent);
+  const profileTitle = stringValue(body.profileTitle).trim().slice(0, 60);
+  const serverLabel = stringValue(body.serverLabel).trim().slice(0, 40);
+  const preferences = { ...user.preferences, profileBannerUrl, profileAccent, profileTitle, serverLabel };
+  await forumQuery("UPDATE forum_users SET avatar_url=$1,bio=$2,settings=$3::jsonb WHERE id=$4", [avatarUrl, bio, JSON.stringify(preferences), user.id]);
+  await audit(request, user, "profile.update", "user", user.id, null, { avatarUrl, bio, profileBannerUrl: Boolean(profileBannerUrl), profileAccent, profileTitle, serverLabel });
+  return NextResponse.json({ ok: true });
+}
+
+async function savePreferences(user: ForumUser, request: NextRequest, body: Record<string, unknown>) {
+  const raw = jsonValue<Partial<ForumUserPreferences>>(body.preferences, {});
+  const themes = new Set(["dark", "light", "system"]);
+  const accents = new Set(["red", "purple", "blue", "green", "orange"]);
+  const densities = new Set(["comfortable", "compact"]);
+  const backgrounds = new Set(["aurora", "plain", "grid"]);
+  const next: ForumUserPreferences = {
+    ...defaultForumUserPreferences,
+    ...user.preferences,
+    theme: themes.has(stringValue(raw.theme)) ? raw.theme as ForumUserPreferences["theme"] : user.preferences.theme,
+    accent: accents.has(stringValue(raw.accent)) ? raw.accent as ForumUserPreferences["accent"] : user.preferences.accent,
+    density: densities.has(stringValue(raw.density)) ? raw.density as ForumUserPreferences["density"] : user.preferences.density,
+    background: backgrounds.has(stringValue(raw.background)) ? raw.background as ForumUserPreferences["background"] : user.preferences.background,
+    sidebarCollapsed: raw.sidebarCollapsed === undefined ? user.preferences.sidebarCollapsed : Boolean(raw.sidebarCollapsed),
+    reduceMotion: raw.reduceMotion === undefined ? user.preferences.reduceMotion : Boolean(raw.reduceMotion),
+    showSignatures: raw.showSignatures === undefined ? user.preferences.showSignatures : Boolean(raw.showSignatures),
+    showOnline: raw.showOnline === undefined ? user.preferences.showOnline : Boolean(raw.showOnline),
+    showActivity: raw.showActivity === undefined ? user.preferences.showActivity : Boolean(raw.showActivity),
+    editorToolbar: raw.editorToolbar === undefined ? user.preferences.editorToolbar : Boolean(raw.editorToolbar),
+  };
+  await forumQuery("UPDATE forum_users SET settings=$1::jsonb WHERE id=$2", [JSON.stringify(next), user.id]);
+  await audit(request, user, "preferences.update", "user", user.id, null, { theme: next.theme, accent: next.accent, density: next.density, background: next.background, sidebarCollapsed: next.sidebarCollapsed });
+  return NextResponse.json({ ok: true });
+}
+
+async function markForumRead(user: ForumUser) {
+  const next = { ...defaultForumUserPreferences, ...user.preferences, forumReadAt: new Date().toISOString() };
+  await forumQuery("UPDATE forum_users SET settings=$1::jsonb WHERE id=$2", [JSON.stringify(next), user.id]);
   return NextResponse.json({ ok: true });
 }
 
@@ -2025,9 +2076,32 @@ async function saveIntegration(user: ForumUser, request: NextRequest, body: Reco
 async function saveForumSettings(user: ForumUser, request: NextRequest, body: Record<string, unknown>) {
   requirePermission(user, "forum.settings.manage");
   const days = Math.max(1, Math.min(3650, numberValue(body.trashRetentionDays)));
-  await forumQuery(`INSERT INTO forum_settings (key,value) VALUES ('trash_retention',$1::jsonb) ON CONFLICT (key) DO UPDATE SET value=$1::jsonb,updated_at=NOW()`, [JSON.stringify({ days })]);
-  await forumQuery("UPDATE forum_trash SET purge_after=deleted_at + ($1 * INTERVAL '1 day')", [days]);
-  await audit(request, user, "settings.update", "settings", "trash_retention", null, { days });
+  const rawAppearance = jsonValue<Partial<ForumAppearanceSettings>>(body.appearance, {});
+  const appearance: ForumAppearanceSettings = {
+    forumName: stringValue(rawAppearance.forumName || defaultForumAppearance.forumName).trim().slice(0, 40),
+    forumSubtitle: stringValue(rawAppearance.forumSubtitle || defaultForumAppearance.forumSubtitle).trim().slice(0, 120),
+    announcement: stringValue(rawAppearance.announcement || defaultForumAppearance.announcement).trim().slice(0, 300),
+    heroTitle: stringValue(rawAppearance.heroTitle || defaultForumAppearance.heroTitle).trim().slice(0, 90),
+    heroSubtitle: stringValue(rawAppearance.heroSubtitle || defaultForumAppearance.heroSubtitle).trim().slice(0, 300),
+    heroImageUrl: stringValue(rawAppearance.heroImageUrl || defaultForumAppearance.heroImageUrl).trim(),
+    logoImageUrl: stringValue(rawAppearance.logoImageUrl).trim(),
+    serverName: stringValue(rawAppearance.serverName || defaultForumAppearance.serverName).trim().slice(0, 60),
+    serverIp: stringValue(rawAppearance.serverIp || defaultForumAppearance.serverIp).trim().slice(0, 120),
+    accentColor: stringValue(rawAppearance.accentColor || defaultForumAppearance.accentColor).trim(),
+    showHero: rawAppearance.showHero !== false,
+    showRightSidebar: rawAppearance.showRightSidebar !== false,
+  };
+  validateColor(appearance.accentColor);
+  for (const imageUrl of [appearance.heroImageUrl, appearance.logoImageUrl]) {
+    if (imageUrl && !imageUrl.startsWith("/images/")) validateHttpsUrl(imageUrl, true);
+  }
+  if (!appearance.forumName || !appearance.heroTitle || !appearance.serverIp) throw new ApiError("Название форума, заголовок и IP сервера не могут быть пустыми.");
+  await withTransaction(async (client) => {
+    await client.query(`INSERT INTO forum_settings (key,value) VALUES ('trash_retention',$1::jsonb) ON CONFLICT (key) DO UPDATE SET value=$1::jsonb,updated_at=NOW()`, [JSON.stringify({ days })]);
+    await client.query(`INSERT INTO forum_settings (key,value) VALUES ('appearance',$1::jsonb) ON CONFLICT (key) DO UPDATE SET value=$1::jsonb,updated_at=NOW()`, [JSON.stringify(appearance)]);
+    await client.query("UPDATE forum_trash SET purge_after=deleted_at + ($1 * INTERVAL '1 day')", [days]);
+  });
+  await audit(request, user, "settings.update", "settings", "appearance", null, { days, appearance });
   return NextResponse.json({ ok: true });
 }
 

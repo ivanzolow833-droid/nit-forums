@@ -1,6 +1,72 @@
 import type { PermissionKey } from "@/lib/forum-permissions";
 import type { RoleDefinition } from "@/lib/forum-roles";
 
+export type ForumUserPreferences = {
+  theme: "dark" | "light" | "system";
+  accent: "red" | "purple" | "blue" | "green" | "orange";
+  density: "comfortable" | "compact";
+  background: "aurora" | "plain" | "grid";
+  sidebarCollapsed: boolean;
+  reduceMotion: boolean;
+  showSignatures: boolean;
+  showOnline: boolean;
+  showActivity: boolean;
+  editorToolbar: boolean;
+  profileBannerUrl: string;
+  profileAccent: string;
+  profileTitle: string;
+  serverLabel: string;
+  forumReadAt: string;
+};
+
+export type ForumAppearanceSettings = {
+  forumName: string;
+  forumSubtitle: string;
+  announcement: string;
+  heroTitle: string;
+  heroSubtitle: string;
+  heroImageUrl: string;
+  logoImageUrl: string;
+  serverName: string;
+  serverIp: string;
+  accentColor: string;
+  showHero: boolean;
+  showRightSidebar: boolean;
+};
+
+export const defaultForumUserPreferences: ForumUserPreferences = {
+  theme: "dark",
+  accent: "red",
+  density: "comfortable",
+  background: "aurora",
+  sidebarCollapsed: false,
+  reduceMotion: false,
+  showSignatures: true,
+  showOnline: true,
+  showActivity: true,
+  editorToolbar: true,
+  profileBannerUrl: "",
+  profileAccent: "#ef3347",
+  profileTitle: "",
+  serverLabel: "CloudWorld",
+  forumReadAt: "",
+};
+
+export const defaultForumAppearance: ForumAppearanceSettings = {
+  forumName: "CloudWorld",
+  forumSubtitle: "Официальный форум игрового проекта",
+  announcement: "Перед публикацией обращения прочитайте правила и приложите доказательства.",
+  heroTitle: "Твой мир. Твоя история.",
+  heroSubtitle: "Новости CloudWorld, игровые разделы, обращения к администрации, заявки в состав и живое сообщество — всё в одном месте.",
+  heroImageUrl: "/images/hero.jpg",
+  logoImageUrl: "",
+  serverName: "Сервер CloudWorld",
+  serverIp: "cloudworldmc.ru",
+  accentColor: "#ef3347",
+  showHero: true,
+  showRightSidebar: true,
+};
+
 export type ForumUser = {
   id: string;
   username: string;
@@ -13,6 +79,7 @@ export type ForumUser = {
   reactionsCount: number;
   postsCount: number;
   achievements: ForumAchievement[];
+  preferences: ForumUserPreferences;
 };
 
 export type ForumAchievement = {
@@ -307,7 +374,7 @@ export type ForumPayload = {
   following: ForumUser[];
   blockedUsers: ForumUser[];
   integrations: ForumIntegration[];
-  forumSettings: { trashRetentionDays: number };
+  forumSettings: { trashRetentionDays: number; appearance: ForumAppearanceSettings };
   aiReplyAssistantEnabled: boolean;
 };
 
@@ -360,14 +427,16 @@ export type ForumAction =
   | { action: "block_user"; userId: string; blocked: boolean }
   | { action: "toggle_follow"; userId: string }
   | { action: "moderate_user"; userId: string; type: "warn" | "mute" | "ban"; reason: string; durationHours?: number }
-  | { action: "save_profile"; avatarUrl: string; bio: string }
+  | { action: "save_profile"; avatarUrl: string; bio: string; profileBannerUrl: string; profileAccent: string; profileTitle: string; serverLabel: string }
+  | { action: "save_preferences"; preferences: Partial<ForumUserPreferences> }
+  | { action: "mark_forum_read" }
   | { action: "save_draft"; key: string; body: Record<string, unknown> }
   | { action: "delete_draft"; key: string }
   | { action: "set_view_as_role"; roleId: string | null }
   | { action: "save_tag"; tag: Partial<ForumTag> & { label: string; color: string; sortOrder: number } }
   | { action: "delete_tag"; tagId: string }
   | { action: "save_integration"; integration: ForumIntegration }
-  | { action: "save_forum_settings"; trashRetentionDays: number };
+  | { action: "save_forum_settings"; trashRetentionDays: number; appearance: ForumAppearanceSettings };
 
 export class ForumRequestError extends Error {
   status: number;

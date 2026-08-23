@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
@@ -33,6 +34,7 @@ import {
   type ForumBoard,
   type ForumFormField,
   type ForumIntegration,
+  type ForumAppearanceSettings,
   type ForumPayload,
   type ReactionTypeDefinition,
   type ForumSection,
@@ -96,6 +98,7 @@ export function ForumAdmin({ payload, onChanged }: { payload: ForumPayload; onCh
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retentionDays, setRetentionDays] = useState(payload.forumSettings.trashRetentionDays);
+  const [appearance, setAppearance] = useState<ForumAppearanceSettings>(payload.forumSettings.appearance);
   const [viewAsRoleId, setViewAsRoleId] = useState("member");
 
   const permissionsByCategory = useMemo(() => {
@@ -280,7 +283,27 @@ export function ForumAdmin({ payload, onChanged }: { payload: ForumPayload; onCh
       ) : null}
 
       {tab === "settings" && canSettings ? (
-        <div className="grid gap-4 lg:grid-cols-2"><div className="dark-panel space-y-4 p-5"><div><h3 className="font-heading text-base font-bold uppercase text-white">Корзина</h3><p className="mt-1 text-xs text-white/35">Удалённые темы, сообщения и разделы очищаются автоматически.</p></div><label className="editor-label">Хранить удалённое, дней<Input type="number" min={1} max={3650} value={retentionDays} onChange={(event) => setRetentionDays(Number(event.target.value))} /></label><Button disabled={busy} className="bg-red-600" onClick={() => void perform(() => runForumAction({ action: "save_forum_settings", trashRetentionDays: retentionDays }))}><Save /> Сохранить срок</Button></div><div className="dark-panel space-y-4 p-5"><div><h3 className="font-heading text-base font-bold uppercase text-white">Просмотреть форум как роль</h3><p className="mt-1 text-xs text-white/35">Настоящие права владельца не меняются. Все изменения временно блокируются.</p></div><select className="forum-select" value={viewAsRoleId} onChange={(event) => setViewAsRoleId(event.target.value)}>{payload.roles.filter((role) => role.enabled && !["owner", "mrproper"].includes(role.id)).map((role) => <option key={role.id} value={role.id}>{role.label}</option>)}</select><Button className="bg-amber-600 hover:bg-amber-500" onClick={() => void perform(() => runForumAction({ action: "set_view_as_role", roleId: viewAsRoleId }), () => window.location.reload())}><UsersRound /> Просмотреть форум как…</Button></div></div>
+        <div className="space-y-4">
+          <div className="dark-panel owner-appearance-panel">
+            <div className="owner-appearance-heading"><div><h3>Внешний вид форума</h3><p>Название, базовые картинки, тексты, сервер и видимые блоки меняются без редактирования кода.</p></div><span className="private-pill">Только владелец</span></div>
+            <div className="owner-appearance-preview" style={{ backgroundImage: appearance.heroImageUrl ? `linear-gradient(90deg,rgba(8,10,14,.95),rgba(8,10,14,.42)),url("${appearance.heroImageUrl}")` : undefined, borderColor: appearance.accentColor }}><div>{appearance.logoImageUrl ? <img src={appearance.logoImageUrl} alt="Логотип" /> : <span style={{ background: appearance.accentColor }}>CW</span>}<small>{appearance.forumSubtitle}</small><strong>{appearance.heroTitle}</strong><p>{appearance.heroSubtitle}</p></div></div>
+            <div className="owner-appearance-fields">
+              <label className="editor-label">Название форума<Input maxLength={40} value={appearance.forumName} onChange={(event) => setAppearance({ ...appearance, forumName: event.target.value })} /></label>
+              <label className="editor-label">Подпись форума<Input maxLength={120} value={appearance.forumSubtitle} onChange={(event) => setAppearance({ ...appearance, forumSubtitle: event.target.value })} /></label>
+              <label className="editor-label owner-wide">Объявление<Input maxLength={300} value={appearance.announcement} onChange={(event) => setAppearance({ ...appearance, announcement: event.target.value })} /></label>
+              <label className="editor-label">Заголовок баннера<Input maxLength={90} value={appearance.heroTitle} onChange={(event) => setAppearance({ ...appearance, heroTitle: event.target.value })} /></label>
+              <label className="editor-label">Подзаголовок баннера<Textarea rows={3} maxLength={300} value={appearance.heroSubtitle} onChange={(event) => setAppearance({ ...appearance, heroSubtitle: event.target.value })} /></label>
+              <label className="editor-label">Картинка баннера<Input value={appearance.heroImageUrl} onChange={(event) => setAppearance({ ...appearance, heroImageUrl: event.target.value })} placeholder="/images/hero.jpg или https://..." /></label>
+              <label className="editor-label">Логотип<Input value={appearance.logoImageUrl} onChange={(event) => setAppearance({ ...appearance, logoImageUrl: event.target.value })} placeholder="https://.../logo.png" /></label>
+              <label className="editor-label">Название сервера<Input maxLength={60} value={appearance.serverName} onChange={(event) => setAppearance({ ...appearance, serverName: event.target.value })} /></label>
+              <label className="editor-label">IP сервера<Input maxLength={120} value={appearance.serverIp} onChange={(event) => setAppearance({ ...appearance, serverIp: event.target.value })} /></label>
+              <label className="editor-label">Основной цвет<Input type="color" value={appearance.accentColor} onChange={(event) => setAppearance({ ...appearance, accentColor: event.target.value })} /></label>
+            </div>
+            <div className="setting-checks"><label><input type="checkbox" checked={appearance.showHero} onChange={(event) => setAppearance({ ...appearance, showHero: event.target.checked })} /> Показывать большой баннер</label><label><input type="checkbox" checked={appearance.showRightSidebar} onChange={(event) => setAppearance({ ...appearance, showRightSidebar: event.target.checked })} /> Показывать правую колонку</label></div>
+            <Button disabled={busy} className="bg-red-600" onClick={() => void perform(() => runForumAction({ action: "save_forum_settings", trashRetentionDays: retentionDays, appearance }))}><Save /> Сохранить оформление и настройки</Button>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2"><div className="dark-panel space-y-4 p-5"><div><h3 className="font-heading text-base font-bold uppercase text-white">Корзина</h3><p className="mt-1 text-xs text-white/35">Удалённые темы, сообщения и разделы очищаются автоматически.</p></div><label className="editor-label">Хранить удалённое, дней<Input type="number" min={1} max={3650} value={retentionDays} onChange={(event) => setRetentionDays(Number(event.target.value))} /></label><p className="text-xs text-white/35">Срок сохраняется вместе с оформлением кнопкой выше.</p></div><div className="dark-panel space-y-4 p-5"><div><h3 className="font-heading text-base font-bold uppercase text-white">Просмотреть форум как роль</h3><p className="mt-1 text-xs text-white/35">Настоящие права владельца не меняются. Все изменения временно блокируются.</p></div><select className="forum-select" value={viewAsRoleId} onChange={(event) => setViewAsRoleId(event.target.value)}>{payload.roles.filter((role) => role.enabled && !["owner", "mrproper"].includes(role.id)).map((role) => <option key={role.id} value={role.id}>{role.label}</option>)}</select><Button className="bg-amber-600 hover:bg-amber-500" onClick={() => void perform(() => runForumAction({ action: "set_view_as_role", roleId: viewAsRoleId }), () => window.location.reload())}><UsersRound /> Просмотреть форум как…</Button></div></div>
+        </div>
       ) : null}
 
       {roleDraft ? <RoleEditor role={roleDraft} permissionsByCategory={permissionsByCategory} busy={busy} onChange={setRoleDraft} onClose={() => setRoleDraft(null)} onSave={() => void perform(() => runForumAction({ action: "save_role", role: roleDraft }), () => setRoleDraft(null))} /> : null}
