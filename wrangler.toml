@@ -3,6 +3,6 @@
 # Output directory: out
 # Root: /
 
-name = "cloudworld-forum"
+name = "nit-forums"
 compatibility_date = "2026-08-23"
 pages_build_output_dir = "out"
