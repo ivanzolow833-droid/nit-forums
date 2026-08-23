@@ -1,116 +1,72 @@
 "use client";
 
+import { ExternalLink, Server, Shield, UsersRound } from "lucide-react";
 import { RoleBadge } from "@/components/role-badge";
-import {
-  onlineUsers,
-  quickLinks,
-  site,
-  staffRoster,
-  getStaffRole,
-} from "@/lib/forum-data";
+import { quickLinks, site } from "@/lib/forum-data";
+import type { ForumUser } from "@/lib/forum-store";
+import type { RoleDefinition } from "@/lib/forum-roles";
 
-export function ForumSidebar() {
+export function ForumSidebar({
+  user,
+  roles,
+  members,
+}: {
+  user: ForumUser | null;
+  roles: RoleDefinition[];
+  members: number;
+}) {
   return (
-    <aside id="links" className="space-y-4 lg:sticky lg:top-24 lg:self-start">
-      <section className="panel p-4">
-        <h2 className="font-heading text-base font-bold text-ink">
-          Быстрая навигация
-        </h2>
-        <ul className="mt-3 space-y-2">
+    <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
+      <section className="dark-panel overflow-hidden">
+        <div className="panel-title"><Server /> Сервер CloudWorld</div>
+        <div className="space-y-4 p-4">
+          <div>
+            <div className="sidebar-label">Адрес сервера</div>
+            <div className="mt-1 font-mono text-base font-bold text-white">{site.ip}</div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="sidebar-stat"><strong>{members}</strong><span>участников</span></div>
+            <div className="sidebar-stat"><strong>{roles.length}</strong><span>уровней ролей</span></div>
+          </div>
+          {user ? (
+            <div className="rounded-lg border border-white/10 bg-black/25 p-3">
+              <div className="sidebar-label">Ваш аккаунт</div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="font-bold text-white">{user.username}</span>
+                <RoleBadge role={user.role} />
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="dark-panel overflow-hidden">
+        <div className="panel-title"><ExternalLink /> Полезные ссылки</div>
+        <nav className="divide-y divide-white/[0.06]">
           {quickLinks.map((link) => (
-            <li key={link.id}>
-              <a
-                href={link.href}
-                target="_blank"
-                rel="noreferrer"
-                className="block rounded-xl bg-secondary/80 px-3 py-2.5 transition hover:bg-grass/15"
-              >
-                <span className="block text-sm font-semibold text-ink">
-                  {link.label}
-                </span>
-                <span className="text-xs text-muted-foreground">{link.hint}</span>
-              </a>
-            </li>
+            <a key={link.id} href={link.href} target="_blank" rel="noreferrer" className="sidebar-link">
+              <span><strong>{link.label}</strong><small>{link.hint}</small></span>
+              <ExternalLink className="size-3.5" />
+            </a>
           ))}
-        </ul>
+        </nav>
       </section>
 
-      <section className="panel p-4">
-        <h2 className="font-heading text-base font-bold text-ink">Сервер</h2>
-        <dl className="mt-3 space-y-3 text-sm">
-          <div>
-            <dt className="text-muted-foreground">IP</dt>
-            <dd className="font-mono font-semibold text-ink">{site.ip}</dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">Привязка аккаунта</dt>
-            <dd>
-              <a
-                href={site.botUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="font-semibold text-grass hover:underline"
-              >
-                {site.bot}
-              </a>
-            </dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">Донат</dt>
-            <dd>
-              <a
-                href="https://cloudeworld.trademc.org/"
-                target="_blank"
-                rel="noreferrer"
-                className="font-semibold text-dirt hover:underline"
-              >
-                cloudeworld.trademc.org
-              </a>
-            </dd>
-          </div>
-        </dl>
+      <section className="dark-panel overflow-hidden">
+        <div className="panel-title"><Shield /> Иерархия проекта</div>
+        <div className="space-y-2 p-4">
+          {roles.filter((role) => role.rank >= 20).reverse().map((role) => (
+            <div key={role.id} className="flex items-center justify-between gap-3 border-b border-white/[0.05] pb-2 last:border-0 last:pb-0">
+              <span className="truncate text-xs text-white/55">{role.label}</span>
+              <RoleBadge role={role} />
+            </div>
+          ))}
+        </div>
       </section>
 
-      <section className="panel p-4">
-        <h2 className="font-heading text-base font-bold text-ink">
-          Пользователи онлайн
-        </h2>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {onlineUsers.length} сейчас на форуме (демо)
-        </p>
-        <ul className="mt-3 flex flex-wrap gap-2">
-          {onlineUsers.map((user) => (
-            <li
-              key={user.name}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-secondary/70 px-2 py-1 text-xs"
-            >
-              <span
-                className="font-semibold"
-                style={{
-                  color: user.role ? getStaffRole(user.role).color : "#1c2430",
-                }}
-              >
-                {user.name}
-              </span>
-              {user.role ? <RoleBadge role={user.role} /> : null}
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <section className="panel p-4">
-        <h2 className="font-heading text-base font-bold text-ink">Состав</h2>
-        <ul className="mt-3 space-y-2">
-          {staffRoster.map((member) => (
-            <li
-              key={member.name}
-              className="flex items-center justify-between gap-2 text-sm"
-            >
-              <span className="font-medium">{member.name}</span>
-              <RoleBadge role={member.role} />
-            </li>
-          ))}
-        </ul>
+      <section className="dark-panel flex items-start gap-3 p-4 text-xs leading-5 text-white/45">
+        <UsersRound className="mt-0.5 size-4 shrink-0 text-red-400" />
+        Роли, темы и ответы хранятся в общей базе данных и доступны на всех устройствах.
       </section>
     </aside>
   );

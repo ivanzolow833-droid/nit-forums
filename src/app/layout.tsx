@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Manrope, Rubik } from "next/font/google";
 import "./globals.css";
 
@@ -13,10 +13,32 @@ const rubik = Rubik({
   weight: ["600", "700", "800", "900"],
 });
 
+const productionHost = process.env.VERCEL_PROJECT_PRODUCTION_URL;
+
 export const metadata: Metadata = {
-  title: "CloudWorld — Minecraft-форум сервера",
+  metadataBase: new URL(productionHost ? `https://${productionHost}` : "http://127.0.0.1:3847"),
+  title: "CloudWorld — официальный форум проекта",
   description:
-    "Форум CloudWorld: новости, жалобы, ивенты, донат и привязка аккаунта. IP cloudworldmc.ru",
+    "Официальный форум CloudWorld: новости, игровые разделы, жалобы, заявки, роли и сообщество проекта.",
+  openGraph: {
+    type: "website",
+    locale: "ru_RU",
+    siteName: "CloudWorld Forum",
+    title: "CloudWorld — официальный форум проекта",
+    description: "Новости, игровые разделы, обращения, заявки и сообщество CloudWorld.",
+    images: [{ url: "/og.png", width: 1200, height: 630, alt: "CloudWorld — официальный форум проекта" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "CloudWorld — официальный форум проекта",
+    description: "Новости, игровые разделы, обращения, заявки и сообщество CloudWorld.",
+    images: ["/og.png"],
+  },
+};
+
+export const viewport: Viewport = {
+  colorScheme: "dark",
+  themeColor: "#090b0f",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

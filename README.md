@@ -1,23 +1,47 @@
 # CloudWorld Forum
 
-Форум Minecraft-сервера **CloudWorld**: разделы, регистрация и вход, темы,
-ответы, роли и админ-панель.
+Полноценный форум Minecraft-проекта **CloudWorld**: общая PostgreSQL-база,
+регистрация и вход, темы, ответы, статусы обращений, большая иерархия ролей и
+панель управления структурой форума.
 
-## Админ по умолчанию
+## Владелец по умолчанию
 
 - Логин: `CloudOwner`
 - Пароль: `CloudWorldAdmin1`
+- Роль: `Владелец`
 
-Данные пока хранятся в `localStorage` браузера на текущем устройстве. Общая
-база данных намеренно не подключена.
+Аккаунт создаётся автоматически при первом подключении базы. Роль владельца
+защищена от случайного изменения в админ-панели.
+
+## Возможности
+
+- общие аккаунты и данные на всех устройствах;
+- защищённые серверные сессии и bcrypt-хеширование паролей;
+- создание тем и ответов;
+- модераторские статусы тем;
+- 12 уровней ролей от игрока до владельца;
+- редактирование, создание и удаление разделов и подразделов;
+- ограничения публикации по рангу;
+- закрытые разделы для состава;
+- автоматическое создание таблиц и начальной структуры.
 
 ## Стек
 
-- Next.js + TypeScript
-- Tailwind CSS + shadcn/ui
-- Node.js 20+
+- Next.js 16 + TypeScript;
+- Tailwind CSS + shadcn/ui;
+- PostgreSQL (Neon через Vercel Marketplace);
+- `pg` и `bcryptjs`;
+- Node.js 20.19+.
 
 ## Локальный запуск
+
+Создайте `.env.local`:
+
+```env
+DATABASE_URL=postgresql://USER:PASSWORD@HOST/DATABASE?sslmode=require
+```
+
+Затем:
 
 ```bash
 npm install
@@ -26,25 +50,22 @@ npm run dev
 
 Сайт откроется по адресу http://127.0.0.1:3847.
 
-## Деплой на Vercel
+## Vercel
 
 Репозиторий: https://github.com/ivanzolow833-droid/nit-forums
 
-- Framework Preset: `Next.js`
-- Install Command: `npm install`
-- Build Command: `npm run build`
-- Root Directory: `./`
+- Framework Preset: `Next.js`;
+- Install Command: `npm install`;
+- Build Command: `npm run build`;
+- Output Directory: стандартный Next.js;
+- Root Directory: `./`.
 
-## Ссылки проекта
-
-- IP: `cloudworldmc.ru`
-- Telegram: https://t.me/cloudworldmc
-- VK чат: https://vk.me/join/3BxUJ4KAP8/wW9PmJBme0GCPtf4U/7drlRk=
-- VK сообщество: https://vk.ru/cloudworlds1
-- Привязка аккаунта: https://t.me/CloudWorldMCBot
-- Discord: https://discord.gg/xHMdWm5Qs
-- Донат: https://cloudeworld.trademc.org/
+Для базы подключите **Neon** к проекту через Vercel Marketplace. Интеграция
+должна добавить переменную `DATABASE_URL` для Production и Preview. После
+подключения выполните повторный деплой.
 
 ## Роли
 
-Хелпер → Модератор → Админ → Главный админ
+Игрок → Помощник → Младший модератор → Модератор → Старший модератор → Куратор
+→ Младший администратор → Администратор → Старший администратор → Главный
+администратор → Заместитель владельца → Владелец.
