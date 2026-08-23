@@ -130,3 +130,25 @@ test("rich editor exposes real undo, redo and preview controls", async () => {
   assert.match(editor, /Ctrl\+Z/);
   assert.match(editor, /Предпросмотр/);
 });
+
+test("players receive safe copyable topic templates for core boards", async () => {
+  const [data, app] = await Promise.all([
+    source("src/lib/forum-data.ts"),
+    source("src/components/forum-app.tsx"),
+  ]);
+  for (const templateId of [
+    "player-report",
+    "staff-report",
+    "punishment-appeal",
+    "technical-support",
+    "purchase-problem",
+    "helper-application",
+    "moderator-application",
+    "builder-application",
+    "leader-application",
+  ]) assert.match(data, new RegExp(`id: "${templateId}"`), `missing ${templateId}`);
+  assert.match(app, /navigator\.clipboard\.writeText/);
+  assert.match(app, /document\.execCommand\("copy"\)/);
+  assert.match(app, /Заполнить тему/);
+  assert.match(app, /PlayerTemplateLibrary/);
+});

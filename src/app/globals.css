@@ -602,6 +602,29 @@ html[data-density="compact"] .board-row, html[data-density="compact"] .thread-ro
 .owner-appearance-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .7rem; }
 .owner-appearance-fields .owner-wide { grid-column: 1 / -1; }
 
+.player-template-library { overflow: hidden; }
+.player-template-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; border-bottom: 1px solid rgba(255,255,255,.065); padding: 1rem; }
+.player-template-heading h2 { margin-top: .35rem; font-family: var(--font-heading); font-size: 1rem; font-weight: 950; text-transform: uppercase; color: white; }
+.player-template-heading p { max-width: 720px; margin-top: .3rem; font-size: .62rem; line-height: 1.6; color: rgba(255,255,255,.38); }
+.player-template-count { flex: 0 0 auto; border: 1px solid color-mix(in srgb,var(--cw-accent) 28%,transparent); border-radius: 999px; background: color-mix(in srgb,var(--cw-accent) 8%,transparent); padding: .3rem .55rem; font-size: .52rem; font-weight: 850; color: color-mix(in srgb,var(--cw-accent) 72%,white); }
+.player-template-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .75rem; padding: .8rem; }
+.player-template-card { display: flex; min-width: 0; flex-direction: column; gap: .7rem; border: 1px solid rgba(255,255,255,.07); border-radius: .55rem; background: linear-gradient(150deg,rgba(255,255,255,.025),rgba(0,0,0,.12)); padding: .85rem; }
+.player-template-card-head { display: flex; align-items: center; gap: .65rem; }
+.player-template-card-head > span { display: grid; width: 2.1rem; height: 2.1rem; flex: 0 0 auto; place-items: center; border-radius: .45rem; background: color-mix(in srgb,var(--cw-accent) 12%,transparent); color: color-mix(in srgb,var(--cw-accent) 72%,white); }
+.player-template-card-head svg { width: .95rem; height: .95rem; }
+.player-template-card-head strong, .player-template-card-head small { display: block; }
+.player-template-card-head strong { font-size: .72rem; color: rgba(255,255,255,.82); }
+.player-template-card-head small { margin-top: .18rem; font-size: .54rem; color: rgba(255,255,255,.32); }
+.player-template-topic-title { border: 1px solid rgba(255,255,255,.06); border-radius: .38rem; background: rgba(0,0,0,.16); padding: .58rem; }
+.player-template-topic-title span, .player-template-topic-title code { display: block; }
+.player-template-topic-title span { margin-bottom: .25rem; font-size: .45rem; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.24); }
+.player-template-topic-title code { overflow-wrap: anywhere; font-family: inherit; font-size: .59rem; line-height: 1.45; color: #fbbf24; }
+.player-template-card details { overflow: hidden; border: 1px solid rgba(255,255,255,.06); border-radius: .38rem; }
+.player-template-card summary { cursor: pointer; padding: .55rem .65rem; font-size: .56rem; font-weight: 800; color: rgba(255,255,255,.5); user-select: none; }
+.player-template-card details[open] summary { border-bottom: 1px solid rgba(255,255,255,.06); color: white; }
+.player-template-card pre { max-height: 320px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; background: rgba(0,0,0,.14); padding: .7rem; font-family: inherit; font-size: .57rem; line-height: 1.65; color: rgba(255,255,255,.55); }
+.player-template-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: auto; }
+
 /* Fully functional light appearance */
 html[data-theme="light"] { color-scheme: light; --background: #f5f6fa; --foreground: #20242c; --card: #ffffff; --card-foreground: #20242c; --secondary: #eef0f5; --secondary-foreground: #20242c; --muted: #eef0f4; --muted-foreground: #667085; --border: #dfe3ea; --input: #d7dce5; }
 html[data-theme="light"] body { background-color: #f5f6fa; background-image: radial-gradient(circle at 82% 4%,rgba(139,92,246,.11),transparent 34rem),radial-gradient(circle at 12% 0%,color-mix(in srgb,var(--cw-accent) 10%,transparent),transparent 30rem); }
@@ -635,6 +658,15 @@ html[data-theme="light"] .rich-editor-preview, html[data-theme="light"] .formatt
 html[data-theme="light"] .author-rail { border-color: #e5e7eb; background-color: #f8f9fb; }
 html[data-theme="light"] .profile-custom-title, html[data-theme="light"] .preference-toggle { border-color: #e3e6eb; background: #f8f9fb; color: #525966; }
 html[data-theme="light"] .user-card-body > span, html[data-theme="light"] .user-card-body > small { color: #6c7481; }
+html[data-theme="light"] .player-template-heading { border-color: #e5e7eb; }
+html[data-theme="light"] .player-template-heading h2, html[data-theme="light"] .player-template-card-head strong { color: #252a33; }
+html[data-theme="light"] .player-template-heading p, html[data-theme="light"] .player-template-card-head small { color: #6c7481; }
+html[data-theme="light"] .player-template-card { border-color: #e1e4ea; background: #fafbfc; }
+html[data-theme="light"] .player-template-topic-title, html[data-theme="light"] .player-template-card details { border-color: #e1e4ea; background: #fff; }
+html[data-theme="light"] .player-template-topic-title span { color: #8a919d; }
+html[data-theme="light"] .player-template-card summary { color: #626a77; }
+html[data-theme="light"] .player-template-card details[open] summary { border-color: #e1e4ea; color: #252a33; }
+html[data-theme="light"] .player-template-card pre { background: #f5f6f8; color: #4b5563; }
 
 @media (max-width: 1380px) {
   .forum-page-shell.with-context-sidebar, .forum-page-shell.navigation-collapsed.with-context-sidebar { grid-template-columns: 220px minmax(0,1fr); }
@@ -661,7 +693,8 @@ html[data-theme="light"] .user-card-body > span, html[data-theme="light"] .user-
 @media (max-width: 620px) {
   .rich-editor-toolbar button span { display: none; }
   .rich-editor-footer span:first-child { display: none; }
-  .board-topic-filters, .users-filters, .preferences-grid, .owner-appearance-fields, .users-grid { grid-template-columns: 1fr; }
+  .board-topic-filters, .users-filters, .preferences-grid, .owner-appearance-fields, .users-grid, .player-template-grid { grid-template-columns: 1fr; }
+  .player-template-heading { align-items: flex-start; flex-direction: column; }
   .owner-appearance-fields .owner-wide { grid-column: auto; }
   .profile-custom-preview { align-items: flex-start; flex-direction: column; }
   .owner-appearance-preview strong { font-size: 1.25rem; }
