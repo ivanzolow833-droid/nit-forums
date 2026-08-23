@@ -315,12 +315,42 @@ async function seedSettings(client: PoolClient) {
 }
 
 async function seedOwner(client: PoolClient) {
-  const passwordHash = await hash(DEFAULT_OWNER.password, 12);
+  const normalized = DEFAULT_OWNER.username.toLowerCase();
+  const existing = await client.query<{ id: string }>(
+    "SELECT id FROM forum_users WHERE username_normalized=$1 LIMIT 1",
+    [normalized],
+  );
+  const marker = await client.query(
+    "SELECT 1 FROM forum_settings WHERE key='owner_credentials_v3'",
+  );
+
+  if (!existing.rowCount || !marker.rowCount) {
+    const passwordHash = await hash(DEFAULT_OWNER.password, 12);
+    const owner = await client.query<{ id: string }>(
+      `INSERT INTO forum_users (id, username, username_normalized, password_hash, role_id, must_change_password, created_at)
+       VALUES ('u-owner', $1, $2, $3, 'owner', TRUE, NOW())
+       ON CONFLICT (username_normalized) DO UPDATE SET
+         username=EXCLUDED.username,
+         password_hash=EXCLUDED.password_hash,
+         role_id='owner',
+         must_change_password=TRUE,
+         banned_until=NULL,
+         muted_until=NULL
+       RETURNING id`,
+      [DEFAULT_OWNER.username, normalized, passwordHash],
+    );
+    await client.query("DELETE FROM forum_sessions WHERE user_id=$1", [owner.rows[0].id]);
+    await client.query(
+      `INSERT INTO forum_settings (key,value)
+       VALUES ('owner_credentials_v3','{"applied":true}'::jsonb)
+       ON CONFLICT (key) DO NOTHING`,
+    );
+    return;
+  }
+
   await client.query(
-    `INSERT INTO forum_users (id, username, username_normalized, password_hash, role_id, must_change_password, created_at)
-     VALUES ('u-owner', $1, $2, $3, 'owner', TRUE, NOW())
-     ON CONFLICT (username_normalized) DO UPDATE SET role_id = 'owner'`,
-    [DEFAULT_OWNER.username, DEFAULT_OWNER.username.toLowerCase(), passwordHash],
+    "UPDATE forum_users SET role_id='owner' WHERE username_normalized=$1",
+    [normalized],
   );
 }
 

@@ -60,3 +60,15 @@ test("security controls remain enabled", async () => {
   assert.match(config, /Content-Security-Policy/);
   assert.doesNotMatch(config, /output\s*:\s*["']export["']/);
 });
+
+test("authentication failures stay inside the API error boundary", async () => {
+  const [route, database] = await Promise.all([
+    source("src/app/api/forum/route.ts"),
+    source("src/lib/forum-db.ts"),
+  ]);
+  assert.match(route, /action === "register"\) return await register/);
+  assert.match(route, /action === "login"\) return await login/);
+  assert.match(route, /action === "logout"\) return await logout/);
+  assert.match(database, /owner_credentials_v3/);
+  assert.match(database, /must_change_password=TRUE/);
+});

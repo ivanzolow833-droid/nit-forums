@@ -833,9 +833,9 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as Record<string, unknown>;
     const action = stringValue(body.action);
 
-    if (action === "register") return register(request, body);
-    if (action === "login") return login(request, body);
-    if (action === "logout") return logout(request);
+    if (action === "register") return await register(request, body);
+    if (action === "login") return await login(request, body);
+    if (action === "logout") return await logout(request);
 
     const session = await getSessionContext(request);
     if (!session) throw new ApiError("Сначала войдите в аккаунт.", 401);
