@@ -563,10 +563,11 @@ const threadSelect = `
 async function loadThreads(kind: "recent" | "board" | "single", viewerId: string, role: RoleDefinition, value = "") {
   let where = "t.deleted_at IS NULL AND b.deleted_at IS NULL AND s.deleted_at IS NULL";
   const manageHidden = OWNER_ROLE_IDS.has(role.id) || role.permissions.includes("forum.sections.manage");
-  const values: unknown[] = [viewerId, role.rank, value, manageHidden];
-  if (kind === "board") where += " AND t.board_id=$3";
-  if (kind === "single") where += " AND t.id=$3";
-  where += " AND (s.is_staff_only=FALSE OR $2 >= 10) AND b.visibility_min_rank <= $2 AND ($4::boolean=TRUE OR (b.is_hidden=FALSE AND s.is_hidden=FALSE))";
+  const values: unknown[] = [viewerId, role.rank];
+  if (kind === "board") { values.push(value); where += ` AND t.board_id=$${values.length}`; }
+  if (kind === "single") { values.push(value); where += ` AND t.id=$${values.length}`; }
+  values.push(manageHidden);
+  where += ` AND (s.is_staff_only=FALSE OR $2 >= 10) AND b.visibility_min_rank <= $2 AND ($${values.length}::boolean=TRUE OR (b.is_hidden=FALSE AND s.is_hidden=FALSE))`;
   const limit = kind === "single" ? "LIMIT 1" : kind === "board" ? "LIMIT 100" : "LIMIT 12";
   const result = await forumQuery<DbRow>(
     `${threadSelect} WHERE ${where}

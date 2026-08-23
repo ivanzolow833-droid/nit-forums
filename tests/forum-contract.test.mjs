@@ -186,3 +186,13 @@ test("Minecraft status is read directly without an extra cloud service", async (
   assert.match(status, /isPrivateAddress/);
   assert.doesNotMatch(status, /fetch\(/);
 });
+
+test("recent thread query has no untyped parameter gap", async () => {
+  const route = await source("src/app/api/forum/route.ts");
+  const start = route.indexOf('async function loadThreads');
+  const end = route.indexOf('async function loadPosts', start);
+  const handler = route.slice(start, end);
+  assert.match(handler, /const values: unknown\[\] = \[viewerId, role\.rank\]/);
+  assert.match(handler, /values\.push\(manageHidden\)/);
+  assert.doesNotMatch(handler, /\[viewerId, role\.rank, value, manageHidden\]/);
+});
