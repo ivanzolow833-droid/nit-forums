@@ -186,6 +186,8 @@ export type ForumThread = {
   createdAt: string;
   updatedAt: string;
   replyCount: number;
+  viewCount: number;
+  unread: boolean;
   locked: boolean;
   pinned: boolean;
   formData: Record<string, unknown>;
@@ -220,6 +222,13 @@ export type ForumSignature = {
   slogan: string;
   links: { label: string; url: string }[];
   autoAppend: boolean;
+};
+
+export type ForumPagination = {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
 };
 
 export type ForumPost = {
@@ -385,8 +394,10 @@ export type ForumPayload = {
   sections: ForumSection[];
   recentThreads: ForumThread[];
   boardThreads: ForumThread[];
+  boardPagination: ForumPagination;
   activeThread: ForumThread | null;
   posts: ForumPost[];
+  postPagination: ForumPagination;
   users: ForumUser[];
   staffUsers: ForumUser[];
   templates: ForumTemplate[];
@@ -528,10 +539,12 @@ function csrfToken() {
   return match ? decodeURIComponent(match[1]) : "";
 }
 
-export async function loadForum(params?: { boardId?: string; threadId?: string; conversationId?: string; search?: string; status?: string; tag?: string; role?: string; dateFrom?: string }) {
+export async function loadForum(params?: { boardId?: string; threadId?: string; boardPage?: number; postPage?: number; conversationId?: string; search?: string; status?: string; tag?: string; role?: string; dateFrom?: string }) {
   const search = new URLSearchParams();
   if (params?.boardId) search.set("board", params.boardId);
   if (params?.threadId) search.set("thread", params.threadId);
+  if (params?.boardPage && params.boardPage > 1) search.set("boardPage", String(params.boardPage));
+  if (params?.postPage && params.postPage > 1) search.set("postPage", String(params.postPage));
   if (params?.conversationId) search.set("conversation", params.conversationId);
   if (params?.search) search.set("search", params.search);
   if (params?.status) search.set("status", params.status);

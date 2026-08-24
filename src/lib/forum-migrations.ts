@@ -503,6 +503,31 @@ const migrations: Migration[] = [
       UPDATE forum_boards SET is_hidden=TRUE,is_archived=TRUE WHERE id='builder-apps';
     `,
   },
+  {
+    version: 4,
+    name: "forum_read_tracking_and_views",
+    sql: `
+      ALTER TABLE forum_threads ADD COLUMN IF NOT EXISTS view_count INTEGER NOT NULL DEFAULT 0;
+
+      CREATE TABLE IF NOT EXISTS forum_thread_reads (
+        user_id TEXT NOT NULL REFERENCES forum_users(id) ON DELETE CASCADE,
+        thread_id TEXT NOT NULL REFERENCES forum_threads(id) ON DELETE CASCADE,
+        last_read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (user_id, thread_id)
+      );
+      CREATE INDEX IF NOT EXISTS forum_thread_reads_user_idx
+        ON forum_thread_reads(user_id, last_read_at DESC);
+
+      CREATE TABLE IF NOT EXISTS forum_thread_viewers (
+        thread_id TEXT NOT NULL REFERENCES forum_threads(id) ON DELETE CASCADE,
+        viewer_key TEXT NOT NULL,
+        viewed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (thread_id, viewer_key)
+      );
+      CREATE INDEX IF NOT EXISTS forum_thread_viewers_viewed_idx
+        ON forum_thread_viewers(viewed_at);
+    `,
+  },
 ];
 
 export async function runForumMigrations(client: PoolClient) {

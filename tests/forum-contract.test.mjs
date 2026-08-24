@@ -248,3 +248,34 @@ test("role cards stay distinct and author names open public profiles", async () 
   assert.match(styles, /public-profile-card/);
   assert.match(styles, /--cw-accent: #a855f7/);
 });
+
+test("ordinary forum navigation is shareable and paginated on the server", async () => {
+  const [app, store, route] = await Promise.all([
+    source("src/components/forum-app.tsx"),
+    source("src/lib/forum-store.ts"),
+    source("src/app/api/forum/route.ts"),
+  ]);
+  assert.match(app, /window\.history\.pushState/);
+  assert.match(app, /window\.addEventListener\("popstate"/);
+  assert.match(app, /function Pagination/);
+  assert.match(store, /boardPagination: ForumPagination/);
+  assert.match(store, /postPagination: ForumPagination/);
+  assert.match(route, /const BOARD_PAGE_SIZE = 20/);
+  assert.match(route, /const POST_PAGE_SIZE = 15/);
+  assert.match(route, /LIMIT \$5 OFFSET \$6/);
+});
+
+test("thread views and read state use additive privacy-safe storage", async () => {
+  const [migration, route, app] = await Promise.all([
+    source("src/lib/forum-migrations.ts"),
+    source("src/app/api/forum/route.ts"),
+    source("src/components/forum-app.tsx"),
+  ]);
+  assert.match(migration, /ALTER TABLE forum_threads ADD COLUMN IF NOT EXISTS view_count/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS forum_thread_reads/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS forum_thread_viewers/);
+  assert.match(route, /sha256\(userId \? `user:\$\{userId\}` : `guest:\$\{requestIpHash\(request\)\}`\)/);
+  assert.match(route, /ON CONFLICT \(user_id,thread_id\) DO UPDATE/);
+  assert.match(app, /thread\.viewCount\.toLocaleString\("ru-RU"\)/);
+  assert.match(app, /thread\.unread \? "thread-row unread"/);
+});

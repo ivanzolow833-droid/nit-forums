@@ -76,6 +76,8 @@ export const dynamic = "force-dynamic";
 const SESSION_COOKIE = "cloudworld_session";
 const CSRF_COOKIE = "cloudworld_csrf";
 const SESSION_SECONDS = 60 * 60 * 24 * 30;
+const BOARD_PAGE_SIZE = 20;
+const POST_PAGE_SIZE = 15;
 const OWNER_ROLE_IDS = new Set(["owner", "mrproper"]);
 class ApiError extends Error {
   status: number;
@@ -119,6 +121,11 @@ function jsonValue<T>(value: unknown, fallback: T): T {
     }
   }
   return value as T;
+}
+
+function positivePage(value: string | null) {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? Math.min(parsed, 10_000) : 1;
 }
 
 function signatureValue(value: unknown): ForumSignature {
@@ -281,6 +288,8 @@ function mapThread(row: DbRow): ForumThread {
     createdAt: dateValue(row.created_at),
     updatedAt: dateValue(row.updated_at),
     replyCount: numberValue(row.reply_count),
+    viewCount: numberValue(row.view_count),
+    unread: Boolean(row.unread),
     locked: Boolean(row.locked),
     pinned: Boolean(row.pinned),
     formData: jsonValue<Record<string, unknown>>(row.form_data, {}),
@@ -556,13 +565,22 @@ async function loadSections(effectiveRole: RoleDefinition, manage: boolean) {
 }
 
 const threadSelect = `
-  SELECT t.id,t.board_id,t.title,t.body,t.status,t.created_at,t.updated_at,t.locked,t.pinned,t.form_data,t.accepted_post_id,t.merged_into_id,
+  SELECT t.id,t.board_id,t.title,t.body,t.status,t.created_at,t.updated_at,t.locked,t.pinned,t.form_data,t.accepted_post_id,t.merged_into_id,t.view_count,
     ${userColumns("u", "r", "author_")},
     ts.id AS status_id,ts.label AS status_label,ts.color AS status_color,ts.sort_order AS status_sort_order,
     ts.is_enabled AS status_enabled,ts.is_system AS status_system,
     (SELECT COUNT(*)::INTEGER FROM forum_posts p WHERE p.thread_id=t.id AND p.deleted_at IS NULL) AS reply_count,
     EXISTS(SELECT 1 FROM forum_bookmarks bm WHERE bm.thread_id=t.id AND bm.user_id=$1) AS bookmarked,
     EXISTS(SELECT 1 FROM forum_subscriptions sub WHERE sub.target_type='thread' AND sub.target_id=t.id AND sub.user_id=$1) AS subscribed,
+    CASE WHEN $1='' THEN FALSE ELSE t.updated_at > COALESCE(
+      GREATEST(
+        tr.last_read_at,
+        NULLIF(viewer.settings->>'forumReadAt','')::timestamptz
+      ),
+      tr.last_read_at,
+      NULLIF(viewer.settings->>'forumReadAt','')::timestamptz,
+      TIMESTAMPTZ '-infinity'
+    ) END AS unread,
     a.id AS assignment_id,a.assigned_user_id AS assignment_user_id,au.username AS assignment_username,
     a.assigned_role_id AS assignment_role_id,ar.label AS assignment_role_label,a.reason AS assignment_reason,a.created_at AS assignment_created_at,
     COALESCE((SELECT jsonb_agg(jsonb_build_object('id',tag.id,'label',tag.label,'color',tag.color,'sortOrder',tag.sort_order,'enabled',tag.is_enabled) ORDER BY tag.sort_order)
@@ -572,13 +590,15 @@ const threadSelect = `
   JOIN forum_roles r ON r.id=u.role_id
   JOIN forum_boards b ON b.id=t.board_id
   JOIN forum_sections s ON s.id=b.section_id
+  LEFT JOIN forum_users viewer ON viewer.id=$1
+  LEFT JOIN forum_thread_reads tr ON tr.thread_id=t.id AND tr.user_id=$1
   LEFT JOIN forum_topic_statuses ts ON ts.id=t.status
   LEFT JOIN forum_topic_assignments a ON a.thread_id=t.id AND a.active=TRUE
   LEFT JOIN forum_users au ON au.id=a.assigned_user_id
   LEFT JOIN forum_roles ar ON ar.id=a.assigned_role_id
 `;
 
-async function loadThreads(kind: "recent" | "board" | "single", viewerId: string, role: RoleDefinition, value = "") {
+async function loadThreads(kind: "recent" | "board" | "single", viewerId: string, role: RoleDefinition, value = "", page = 1) {
   let where = "t.deleted_at IS NULL AND b.deleted_at IS NULL AND s.deleted_at IS NULL";
   const manageHidden = OWNER_ROLE_IDS.has(role.id) || role.permissions.includes("forum.sections.manage");
   const values: unknown[] = [viewerId, role.rank];
@@ -586,7 +606,7 @@ async function loadThreads(kind: "recent" | "board" | "single", viewerId: string
   if (kind === "single") { values.push(value); where += ` AND t.id=$${values.length}`; }
   values.push(manageHidden);
   where += ` AND (s.is_staff_only=FALSE OR $2 >= 10) AND b.visibility_min_rank <= $2 AND ($${values.length}::boolean=TRUE OR (b.is_hidden=FALSE AND s.is_hidden=FALSE))`;
-  const limit = kind === "single" ? "LIMIT 1" : kind === "board" ? "LIMIT 100" : "LIMIT 12";
+  const limit = kind === "single" ? "LIMIT 1" : kind === "board" ? `LIMIT ${BOARD_PAGE_SIZE} OFFSET ${(page - 1) * BOARD_PAGE_SIZE}` : "LIMIT 12";
   const result = await forumQuery<DbRow>(
     `${threadSelect} WHERE ${where}
      ORDER BY t.pinned DESC,t.updated_at DESC ${limit}`,
@@ -595,7 +615,17 @@ async function loadThreads(kind: "recent" | "board" | "single", viewerId: string
   return result.rows.map(mapThread);
 }
 
-async function loadPosts(threadId: string, viewerId: string, canViewInternal: boolean, canViewPrivate: boolean) {
+async function loadVisiblePostCount(threadId: string, viewerId: string, canViewInternal: boolean, canViewPrivate: boolean) {
+  const result = await forumQuery<DbRow>(
+    `SELECT COUNT(*)::INTEGER AS total FROM forum_posts p
+     WHERE p.thread_id=$1 AND p.deleted_at IS NULL AND (p.is_internal=FALSE OR $3=TRUE)
+       AND (p.is_private=FALSE OR p.author_id=$2 OR $4=TRUE)`,
+    [threadId, viewerId, canViewInternal, canViewPrivate],
+  );
+  return numberValue(result.rows[0]?.total);
+}
+
+async function loadPosts(threadId: string, viewerId: string, canViewInternal: boolean, canViewPrivate: boolean, page: number) {
   const result = await forumQuery<DbRow>(
     `SELECT p.id,p.thread_id,p.body,p.created_at,p.edited_at,p.is_internal,p.is_private,p.signature_snapshot,
        ${userColumns("u", "r", "author_")},
@@ -615,8 +645,8 @@ async function loadPosts(threadId: string, viewerId: string, canViewInternal: bo
      JOIN forum_roles r ON r.id=u.role_id
      WHERE p.thread_id=$1 AND p.deleted_at IS NULL AND (p.is_internal=FALSE OR $3=TRUE)
        AND (p.is_private=FALSE OR p.author_id=$2 OR $4=TRUE)
-     ORDER BY p.created_at LIMIT 500`,
-    [threadId, viewerId, canViewInternal, canViewPrivate],
+      ORDER BY p.created_at LIMIT $5 OFFSET $6`,
+    [threadId, viewerId, canViewInternal, canViewPrivate, POST_PAGE_SIZE, (page - 1) * POST_PAGE_SIZE],
   );
   return result.rows.map<ForumPost>((row) => ({
     id: stringValue(row.id), threadId: stringValue(row.thread_id), body: stringValue(row.body), author: mapUser(row),
@@ -627,6 +657,29 @@ async function loadPosts(threadId: string, viewerId: string, canViewInternal: bo
     reactions: jsonValue<ReactionSummary[]>(row.reactions, []),
     revisions: jsonValue<ForumPost["revisions"]>(row.revisions, []),
   }));
+}
+
+async function registerThreadView(request: NextRequest, threadId: string, userId: string | null) {
+  const viewerKey = sha256(userId ? `user:${userId}` : `guest:${requestIpHash(request)}`);
+  const result = await forumQuery<DbRow>(
+    `WITH inserted AS (
+       INSERT INTO forum_thread_viewers (thread_id,viewer_key) VALUES ($1,$2)
+       ON CONFLICT DO NOTHING RETURNING 1
+     )
+     UPDATE forum_threads SET view_count=view_count+1
+     WHERE id=$1 AND EXISTS (SELECT 1 FROM inserted)
+     RETURNING view_count`,
+    [threadId, viewerKey],
+  );
+  return result.rows[0] ? numberValue(result.rows[0].view_count) : null;
+}
+
+async function markThreadRead(userId: string, threadId: string) {
+  await forumQuery(
+    `INSERT INTO forum_thread_reads (user_id,thread_id,last_read_at) VALUES ($1,$2,NOW())
+     ON CONFLICT (user_id,thread_id) DO UPDATE SET last_read_at=EXCLUDED.last_read_at`,
+    [userId, threadId],
+  );
 }
 
 async function loadUsers(includeAll: boolean) {
@@ -819,6 +872,8 @@ export async function GET(request: NextRequest) {
     const managementVisible = Boolean(actualUser && !viewingAsRole && can(actualUser, "forum.sections.manage"));
     const boardId = request.nextUrl.searchParams.get("board")?.trim() ?? "";
     const threadId = request.nextUrl.searchParams.get("thread")?.trim() ?? "";
+    const requestedBoardPage = positivePage(request.nextUrl.searchParams.get("boardPage"));
+    const requestedPostPage = positivePage(request.nextUrl.searchParams.get("postPage"));
     const conversationId = request.nextUrl.searchParams.get("conversation")?.trim() ?? "";
     const search = request.nextUrl.searchParams.get("search")?.trim() ?? "";
     const searchFilters = {
@@ -828,24 +883,44 @@ export async function GET(request: NextRequest) {
       dateFrom: request.nextUrl.searchParams.get("dateFrom")?.trim() ?? "",
     };
 
-    const [roles, statuses, tags, reactionTypes, stats, sections, recentThreads, boardThreads, activeThreads, staffUsers, searchResults, forumSettings] = await Promise.all([
+    const [roles, statuses, tags, reactionTypes, stats, sections, recentThreads, initialBoardThreads, activeThreads, staffUsers, searchResults, forumSettings] = await Promise.all([
       loadRoles(Boolean(actualUser && !viewingAsRole && can(actualUser, "forum.roles.manage"))),
       loadTopicStatuses(Boolean(actualUser && !viewingAsRole && can(actualUser, "forum.statuses.manage"))),
       loadTags(Boolean(actualUser && !viewingAsRole && can(actualUser, "forum.tags.manage"))),
       loadReactionTypes(Boolean(actualUser && !viewingAsRole && can(actualUser, "forum.reactions.manage"))),
       loadStats(), loadSections(effectiveRole, managementVisible), loadThreads("recent", viewerId, effectiveRole),
-      boardId ? loadThreads("board", viewerId, effectiveRole, boardId) : Promise.resolve([]),
+      boardId ? loadThreads("board", viewerId, effectiveRole, boardId, requestedBoardPage) : Promise.resolve([]),
       threadId ? loadThreads("single", viewerId, effectiveRole, threadId) : Promise.resolve([]),
       loadUsers(false), search ? loadSearch(search, effectiveRole, searchFilters) : Promise.resolve([]),
       loadForumSettings(),
     ]);
+    const boardTotal = sections.flatMap((section) => section.boards).find((board) => board.id === boardId)?.threadCount ?? 0;
+    const boardTotalPages = Math.max(1, Math.ceil(boardTotal / BOARD_PAGE_SIZE));
+    const boardPage = boardId ? Math.min(requestedBoardPage, boardTotalPages) : 1;
+    const boardThreads = boardId && boardPage !== requestedBoardPage
+      ? await loadThreads("board", viewerId, effectiveRole, boardId, boardPage)
+      : initialBoardThreads;
     const activeThread = activeThreads[0] ?? null;
+    const canViewInternal = Boolean(actualUser && can(actualUser, "forum.audit.view"));
+    const canViewPrivate = Boolean(actualUser && can(actualUser, "forum.private_content.view"));
+    const postTotal = activeThread ? await loadVisiblePostCount(activeThread.id, viewerId, canViewInternal, canViewPrivate) : 0;
+    const postTotalPages = Math.max(1, Math.ceil(postTotal / POST_PAGE_SIZE));
+    const postPage = activeThread ? Math.min(requestedPostPage, postTotalPages) : 1;
     const posts = activeThread ? await loadPosts(
       activeThread.id,
       viewerId,
-      Boolean(actualUser && can(actualUser, "forum.audit.view")),
-      Boolean(actualUser && can(actualUser, "forum.private_content.view")),
+      canViewInternal,
+      canViewPrivate,
+      postPage,
     ) : [];
+    if (activeThread) {
+      const nextViewCount = await registerThreadView(request, activeThread.id, actualUser?.id ?? null);
+      if (nextViewCount !== null) activeThread.viewCount = nextViewCount;
+      if (actualUser) {
+        await markThreadRead(actualUser.id, activeThread.id);
+        activeThread.unread = false;
+      }
+    }
 
     let users: ForumUser[] = [];
     let templates: ForumTemplate[] = [];
@@ -892,7 +967,11 @@ export async function GET(request: NextRequest) {
     const payload: ForumPayload = {
       currentUser: actualUser, viewingAsRole, roles,
       permissions: permissionDefinitions.map(([key, label, category]) => ({ key, label, category })),
-      topicStatuses: statuses, tags, reactionTypes, stats, sections, recentThreads, boardThreads, activeThread, posts, users, staffUsers,
+      topicStatuses: statuses, tags, reactionTypes, stats, sections, recentThreads, boardThreads,
+      boardPagination: { page: boardPage, pageSize: BOARD_PAGE_SIZE, total: boardTotal, totalPages: boardTotalPages },
+      activeThread, posts,
+      postPagination: { page: postPage, pageSize: POST_PAGE_SIZE, total: postTotal, totalPages: postTotalPages },
+      users, staffUsers,
       templates, signature, notifications, unreadNotifications, conversations, conversationMessages, unreadMessages,
       moderation, audit: auditItems, trash, bookmarks, subscriptions, searchResults, drafts, followers, following, blockedUsers, integrations, forumSettings,
       aiReplyAssistantEnabled: Boolean(process.env.GROQ_API_KEY?.trim()),

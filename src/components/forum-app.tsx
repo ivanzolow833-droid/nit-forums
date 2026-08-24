@@ -7,6 +7,7 @@ import {
   Bell,
   Bookmark,
   Check,
+  ChevronLeft,
   ChevronDown,
   ChevronRight,
   ClipboardCheck,
@@ -18,9 +19,11 @@ import {
   FolderSearch,
   History,
   Home,
+  Eye,
   Inbox,
   Lock,
   LockKeyhole,
+  Link2,
   LogIn,
   LogOut,
   Mail,
@@ -68,6 +71,7 @@ import {
   type ForumBoard,
   type ForumFormField,
   type ForumPayload,
+  type ForumPagination,
   type ForumPost,
   type ForumSignature,
   type ForumTemplate,
@@ -77,10 +81,11 @@ import {
 } from "@/lib/forum-store";
 
 type AccountTab = "account" | "notifications" | "bookmarks" | "publications" | "reactions" | "info" | "security" | "privacy" | "settings" | "subscriptions" | "followers" | "following" | "ignoring";
+const accountTabs = new Set<AccountTab>(["account", "notifications", "bookmarks", "publications", "reactions", "info", "security", "privacy", "settings", "subscriptions", "followers", "following", "ignoring"]);
 type View =
   | { name: "home" }
-  | { name: "board"; boardId: string }
-  | { name: "thread"; threadId: string }
+  | { name: "board"; boardId: string; page?: number }
+  | { name: "thread"; threadId: string; page?: number }
   | { name: "auth"; mode: "login" | "register" }
   | { name: "admin" }
   | { name: "staff" }
@@ -93,12 +98,45 @@ type View =
 
 type MenuName = "notifications" | "messages" | "profile" | "theme" | null;
 
+function pageValue(value: string | null) {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function viewFromLocation(): View {
+  if (typeof window === "undefined") return { name: "home" };
+  const params = new URLSearchParams(window.location.search);
+  const boardId = params.get("board")?.trim();
+  if (boardId) return { name: "board", boardId, page: pageValue(params.get("page")) };
+  const threadId = params.get("thread")?.trim();
+  if (threadId) return { name: "thread", threadId, page: pageValue(params.get("page")) };
+  const named = params.get("view");
+  if (named === "auth") return { name: "auth", mode: params.get("mode") === "register" ? "register" : "login" };
+  if (named === "admin" || named === "staff" || named === "search" || named === "users" || named === "community") return { name: named };
+  if (named === "messages") return { name: "messages", conversationId: params.get("conversation") ?? undefined };
+  if (named === "account") { const tab = params.get("tab") as AccountTab | null; return { name: "account", tab: tab && accountTabs.has(tab) ? tab : "account" }; }
+  if (named === "profile" && params.get("user")) return { name: "profile", userId: params.get("user")! };
+  return { name: "home" };
+}
+
+function viewUrl(view: View) {
+  const params = new URLSearchParams();
+  if (view.name === "board") { params.set("board", view.boardId); if ((view.page ?? 1) > 1) params.set("page", String(view.page)); }
+  else if (view.name === "thread") { params.set("thread", view.threadId); if ((view.page ?? 1) > 1) params.set("page", String(view.page)); }
+  else if (view.name === "auth") { params.set("view", "auth"); params.set("mode", view.mode); }
+  else if (view.name === "messages") { params.set("view", "messages"); if (view.conversationId) params.set("conversation", view.conversationId); }
+  else if (view.name === "account") { params.set("view", "account"); params.set("tab", view.tab); }
+  else if (view.name === "profile") { params.set("view", "profile"); params.set("user", view.userId); }
+  else if (view.name !== "home") params.set("view", view.name);
+  return params.size ? `/?${params.toString()}` : "/";
+}
+
 function roleHas(user: ForumUser | null, permission: PermissionKey) {
   return Boolean(user && (["owner", "mrproper"].includes(user.role.id) || user.role.permissions.includes(permission)));
 }
 
 export function ForumApp() {
-  const [view, setView] = useState<View>({ name: "home" });
+  const [view, setView] = useState<View>(viewFromLocation);
   const [payload, setPayload] = useState<ForumPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [fatalError, setFatalError] = useState<string | null>(null);
@@ -135,8 +173,8 @@ export function ForumApp() {
     setLoading(true);
     try {
       const data = await loadForum(
-        view.name === "board" ? { boardId: view.boardId }
-          : view.name === "thread" ? { threadId: view.threadId }
+        view.name === "board" ? { boardId: view.boardId, boardPage: view.page ?? 1 }
+          : view.name === "thread" ? { threadId: view.threadId, postPage: view.page ?? 1 }
             : view.name === "messages" ? { conversationId: view.conversationId }
               : view.name === "search" ? { search: searchTerm, status: searchStatus, tag: searchTag, role: searchRole, dateFrom: searchDateFrom }
                 : undefined,
@@ -149,6 +187,12 @@ export function ForumApp() {
       setLoading(false);
     }
   }, [view, searchTerm, searchStatus, searchTag, searchRole, searchDateFrom]);
+
+  useEffect(() => {
+    const onPopState = () => { setView(viewFromLocation()); window.scrollTo({ top: 0 }); };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void refresh(), 0);
@@ -191,6 +235,22 @@ export function ForumApp() {
   }, [payload, view]);
 
   useEffect(() => {
+    if (!payload) return;
+    const pageTitle = view.name === "board" ? currentBoard?.title
+      : view.name === "thread" ? payload.activeThread?.title
+        : view.name === "profile" ? payload.staffUsers.find((member) => member.id === view.userId)?.username
+          : view.name === "search" ? "Поиск"
+            : view.name === "users" ? "Пользователи"
+              : view.name === "community" ? "Сообщество"
+                : view.name === "messages" ? "Переписки"
+                  : view.name === "account" ? "Личный кабинет"
+                    : view.name === "staff" ? "Модерация"
+                      : view.name === "admin" ? "Управление форумом"
+                        : null;
+    document.title = pageTitle ? `${pageTitle} — ${payload.forumSettings.appearance.forumName}` : payload.forumSettings.appearance.forumName;
+  }, [payload, view, currentBoard]);
+
+  useEffect(() => {
     const timer = window.setTimeout(() => {
       if (view.name === "board") {
         const local = window.localStorage.getItem(`cloudworld:draft:thread:${view.boardId}`);
@@ -228,7 +288,9 @@ export function ForumApp() {
   }, [view, replyBody, payload?.currentUser]);
 
   function navigate(next: View) {
-    setFormError(null); setMenu(null); setView(next); window.scrollTo({ top: 0, behavior: "smooth" });
+    setFormError(null); setMenu(null); setView(next);
+    window.history.pushState(null, "", viewUrl(next));
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function updatePreferences(patch: Partial<ForumUserPreferences>) {
@@ -301,7 +363,13 @@ export function ForumApp() {
 
   async function createPost(threadId: string) {
     const result = await perform({ action: "create_post", threadId, body: replyBody, privateContent: replyPrivate });
-    if (result) { window.localStorage.removeItem(`cloudworld:draft:reply:${threadId}`); void runForumAction({ action: "delete_draft", key: `reply:${threadId}` }).catch(() => undefined); setReplyBody(""); setReplyPrivate(false); }
+    if (result) {
+      window.localStorage.removeItem(`cloudworld:draft:reply:${threadId}`);
+      void runForumAction({ action: "delete_draft", key: `reply:${threadId}` }).catch(() => undefined);
+      setReplyBody(""); setReplyPrivate(false);
+      const lastPage = Math.max(1, Math.ceil(((payload?.postPagination.total ?? 0) + 1) / (payload?.postPagination.pageSize ?? 15)));
+      navigate({ name: "thread", threadId, page: lastPage });
+    }
   }
 
   function openLinked(href: string) {
@@ -362,8 +430,8 @@ export function ForumApp() {
         {formError ? <div className="form-error">{formError}</div> : null}
         {view.name === "thread" && payload.activeThread && user && !payload.viewingAsRole ? <ThreadManagementToolbar thread={payload.activeThread} payload={payload} user={user} onAction={(action) => void perform(action)} /> : null}
         {view.name === "home" ? <HomeView payload={payload} navigate={navigate} /> : null}
-        {view.name === "board" ? <BoardView board={currentBoard} threads={payload.boardThreads} user={user} payload={payload} title={threadTitle} body={threadBody} tagIds={threadTagIds} formData={formData} busy={busy} onBack={() => navigate({ name: "home" })} onThread={(threadId) => navigate({ name: "thread", threadId })} onTitle={setThreadTitle} onBody={setThreadBody} onTags={setThreadTagIds} onFormData={setFormData} onCreate={() => void createThread(view.boardId)} onLogin={() => navigate({ name: "auth", mode: "login" })} onAction={(action) => void perform(action)} /> : null}
-        {view.name === "thread" ? <ThreadView thread={payload.activeThread} posts={payload.posts} payload={payload} user={user} reply={replyBody} replyPrivate={replyPrivate} busy={busy} transferOpen={transferOpen} transferUserId={transferUserId} transferRoleId={transferRoleId} transferReason={transferReason} onBack={(boardId) => navigate({ name: "board", boardId })} onProfile={(userId) => navigate({ name: "profile", userId })} onReply={setReplyBody} onReplyPrivate={setReplyPrivate} onSend={() => void createPost(view.threadId)} onLogin={() => navigate({ name: "auth", mode: "login" })} onAction={(action) => void perform(action)} onTransferOpen={setTransferOpen} onTransferUser={setTransferUserId} onTransferRole={setTransferRoleId} onTransferReason={setTransferReason} onTransfer={() => void perform({ action: "transfer_thread", threadId: view.threadId, userId: transferUserId || undefined, roleId: transferRoleId || undefined, reason: transferReason }, () => { setTransferOpen(false); setTransferUserId(""); setTransferRoleId(""); setTransferReason(""); })} onTemplate={setTemplateUse} /> : null}
+        {view.name === "board" ? <BoardView board={currentBoard} threads={payload.boardThreads} pagination={payload.boardPagination} user={user} payload={payload} title={threadTitle} body={threadBody} tagIds={threadTagIds} formData={formData} busy={busy} onBack={() => navigate({ name: "home" })} onThread={(threadId) => navigate({ name: "thread", threadId })} onPage={(page) => navigate({ name: "board", boardId: view.boardId, page })} onTitle={setThreadTitle} onBody={setThreadBody} onTags={setThreadTagIds} onFormData={setFormData} onCreate={() => void createThread(view.boardId)} onLogin={() => navigate({ name: "auth", mode: "login" })} onAction={(action) => void perform(action)} /> : null}
+        {view.name === "thread" ? <ThreadView thread={payload.activeThread} posts={payload.posts} pagination={payload.postPagination} payload={payload} user={user} reply={replyBody} replyPrivate={replyPrivate} busy={busy} transferOpen={transferOpen} transferUserId={transferUserId} transferRoleId={transferRoleId} transferReason={transferReason} onBack={(boardId) => navigate({ name: "board", boardId })} onProfile={(userId) => navigate({ name: "profile", userId })} onPage={(page) => navigate({ name: "thread", threadId: view.threadId, page })} onReply={setReplyBody} onReplyPrivate={setReplyPrivate} onSend={() => void createPost(view.threadId)} onLogin={() => navigate({ name: "auth", mode: "login" })} onAction={(action) => void perform(action)} onTransferOpen={setTransferOpen} onTransferUser={setTransferUserId} onTransferRole={setTransferRoleId} onTransferReason={setTransferReason} onTransfer={() => void perform({ action: "transfer_thread", threadId: view.threadId, userId: transferUserId || undefined, roleId: transferRoleId || undefined, reason: transferReason }, () => { setTransferOpen(false); setTransferUserId(""); setTransferRoleId(""); setTransferReason(""); })} onTemplate={setTemplateUse} /> : null}
         {view.name === "auth" ? <AuthView mode={view.mode} username={username} password={password} busy={busy} onUsername={setUsername} onPassword={setPassword} onSubmit={() => void submitAuth()} onMode={(mode) => navigate({ name: "auth", mode })} /> : null}
         {view.name === "admin" ? <ForumAdmin payload={payload} onChanged={refresh} /> : null}
         {view.name === "staff" ? <ForumStaffPanel payload={payload} onChanged={refresh} /> : null}
@@ -410,7 +478,7 @@ function ProfileDropdown({ user, staff, onNavigate, onLogout }: { user: ForumUse
 
 function HomeView({ payload, navigate }: { payload: ForumPayload; navigate: (view: View) => void }) { return <><div className="announcement-strip"><ShieldCheck /> {payload.forumSettings.appearance.announcement}</div><section id="forum-sections" className="space-y-4">{payload.sections.map((section) => <section key={section.id} className="forum-section overflow-hidden"><div className="section-head"><div><h2>{section.title}</h2><p>{section.description}</p></div>{section.isStaffOnly ? <span className="private-pill"><LockKeyhole /> Только состав</span> : null}</div><div className="divide-y divide-white/[0.06]">{section.boards.map((board) => <button key={board.id} className="board-row" onClick={() => navigate({ name: "board", boardId: board.id })}><span className="board-icon" style={{ color: board.accent, borderColor: `${board.accent}50`, background: `${board.accent}0d` }}>{board.icon}</span><span className="min-w-0 text-left"><strong>{board.title}</strong><small>{board.description}</small></span><span className="board-count"><strong>{board.threadCount}</strong><small>тем</small></span><span className="latest-cell">{board.latestThread ? <><strong>{board.latestThread.title}</strong><small>{board.latestThread.authorName} · {formatDate(board.latestThread.updatedAt)}</small></> : <small>Тем пока нет</small>}</span><ChevronRight className="size-4 text-white/15" /></button>)}</div></section>)}</section><RecentThreads threads={payload.recentThreads} onOpen={(threadId) => navigate({ name: "thread", threadId })} /></>; }
 
-function RecentThreads({ threads, onOpen }: { threads: ForumThread[]; onOpen: (id: string) => void }) { return <section className="dark-panel overflow-hidden"><div className="panel-title"><Clock3 /> Последние темы</div>{threads.length ? <div className="divide-y divide-white/[0.06]">{threads.map((thread) => <button key={thread.id} className="recent-row" onClick={() => onOpen(thread.id)}><StatusBadge status={thread.status} definition={thread.statusDefinition} /><span className="min-w-0 flex-1 text-left"><strong>{thread.title}</strong><small>{thread.author.username} · {formatDate(thread.updatedAt)}</small></span><span className="thread-replies"><strong>{thread.replyCount}</strong><small>ответов</small></span><ChevronRight className="size-4 text-white/15" /></button>)}</div> : <div className="empty-state">Новых тем пока нет.</div>}</section>; }
+function RecentThreads({ threads, onOpen }: { threads: ForumThread[]; onOpen: (id: string) => void }) { return <section className="dark-panel overflow-hidden"><div className="panel-title"><Clock3 /> Последние темы</div>{threads.length ? <div className="divide-y divide-white/[0.06]">{threads.map((thread) => <button key={thread.id} className="recent-row" onClick={() => onOpen(thread.id)}><StatusBadge status={thread.status} definition={thread.statusDefinition} /><span className="min-w-0 flex-1 text-left"><strong>{thread.title}</strong><small>{thread.author.username} · {formatDate(thread.updatedAt)}</small></span><span className="thread-replies"><strong>{thread.replyCount}</strong><small>ответов</small></span><span className="thread-replies"><strong>{thread.viewCount}</strong><small>просмотров</small></span><ChevronRight className="size-4 text-white/15" /></button>)}</div> : <div className="empty-state">Новых тем пока нет.</div>}</section>; }
 
 function PlayerTemplateLibrary({ templates, canInsert, onInsert }: { templates: PlayerTopicTemplate[]; canInsert: boolean; onInsert: (template: PlayerTopicTemplate) => void }) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -437,7 +505,7 @@ function PlayerTemplateLibrary({ templates, canInsert, onInsert }: { templates: 
   return <section className="dark-panel player-template-library"><div className="player-template-heading"><div><div className="hero-kicker"><span /> Готовые формы</div><h2>Шаблоны для игроков</h2><p>Скопируйте форму и замените текст в квадратных скобках своими данными. Не публикуйте пароли и коды подтверждения.</p></div><span className="player-template-count">{templates.length} {templates.length === 1 ? "шаблон" : "шаблона"}</span></div><div className="player-template-grid">{templates.map((template) => <article key={template.id} className="player-template-card"><div className="player-template-card-head"><span><FileSignature /></span><div><strong>{template.title}</strong><small>{template.description}</small></div></div><div className="player-template-topic-title"><span>Заголовок</span><code>{template.topicTitle}</code></div><div className="player-template-visible-form"><div><strong>Готовая форма — заполните поля в скобках</strong><span>Форма уже раскрыта, ничего дополнительно открывать не нужно.</span></div><pre>{template.body}</pre></div><div className="player-template-actions"><Button size="sm" variant="outline" className="admin-icon-button" onClick={() => void copyTemplate(template)}>{copiedId === template.id ? <Check /> : <Copy />} {copiedId === template.id ? "Скопировано" : "Скопировать"}</Button>{canInsert ? <Button size="sm" className="bg-red-600 font-bold hover:bg-red-500" onClick={() => onInsert(template)}><Pencil /> Заполнить тему</Button> : null}</div></article>)}</div></section>;
 }
 
-function BoardView({ board, threads, user, payload, title, body, tagIds, formData, busy, onBack, onThread, onTitle, onBody, onTags, onFormData, onCreate, onLogin, onAction }: { board: ForumBoard | null; threads: ForumThread[]; user: ForumUser | null; payload: ForumPayload; title: string; body: string; tagIds: string[]; formData: Record<string, unknown>; busy: boolean; onBack: () => void; onThread: (id: string) => void; onTitle: (value: string) => void; onBody: (value: string) => void; onTags: (values: string[]) => void; onFormData: (value: Record<string, unknown>) => void; onCreate: () => void; onLogin: () => void; onAction: (action: ForumAction) => void }) {
+function BoardView({ board, threads, pagination, user, payload, title, body, tagIds, formData, busy, onBack, onThread, onPage, onTitle, onBody, onTags, onFormData, onCreate, onLogin, onAction }: { board: ForumBoard | null; threads: ForumThread[]; pagination: ForumPagination; user: ForumUser | null; payload: ForumPayload; title: string; body: string; tagIds: string[]; formData: Record<string, unknown>; busy: boolean; onBack: () => void; onThread: (id: string) => void; onPage: (page: number) => void; onTitle: (value: string) => void; onBody: (value: string) => void; onTags: (values: string[]) => void; onFormData: (value: Record<string, unknown>) => void; onCreate: () => void; onLogin: () => void; onAction: (action: ForumAction) => void }) {
   const [filter, setFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   if (!board) return <div className="empty-state dark-panel">Раздел не найден.</div>;
@@ -447,10 +515,16 @@ function BoardView({ board, threads, user, payload, title, body, tagIds, formDat
   const pinnedThreads = visibleThreads.filter((thread) => thread.pinned);
   const regularThreads = visibleThreads.filter((thread) => !thread.pinned);
   const templates = playerTopicTemplates.filter((template) => template.boardIds.includes(board.id));
-  return <><button className="back-link" onClick={onBack}><ArrowLeft /> Главная форума</button><section className="dark-panel overflow-hidden"><div className="board-hero"><span className="board-icon large" style={{ color: board.accent, borderColor: `${board.accent}55`, background: `${board.accent}0d` }}>{board.icon}</span><div><div className="hero-kicker"><span /> Раздел форума</div><h1>{board.title}</h1><p>{board.description}</p></div>{user ? <Button size="sm" variant="outline" className="admin-icon-button" onClick={() => onAction({ action: "toggle_subscription", targetType: "board", targetId: board.id })}><Bell className={subscribed ? "fill-current" : ""} /> {subscribed ? "Подписка включена" : "Подписаться на раздел"}</Button> : null}</div></section><section className="dark-panel overflow-hidden"><div className="panel-title"><MessageSquare /> Темы раздела <span className="panel-count">{visibleThreads.length}</span></div><div className="board-topic-filters"><label><Search /><Input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Найти тему или автора" /></label><select className="forum-select" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">Все статусы</option>{payload.topicStatuses.filter((status) => status.enabled).map((status) => <option key={status.id} value={status.id}>{status.label}</option>)}</select></div>{pinnedThreads.length ? <div className="pinned-topic-group"><div className="pinned-topic-title"><Star className="fill-current" /> Закреплено</div><ThreadRows threads={pinnedThreads} readAt={user?.preferences.forumReadAt ?? ""} onThread={onThread} /></div> : null}{regularThreads.length ? <ThreadRows threads={regularThreads} readAt={user?.preferences.forumReadAt ?? ""} onThread={onThread} /> : !pinnedThreads.length ? <div className="empty-state">По выбранным фильтрам тем нет.</div> : null}</section><PlayerTemplateLibrary templates={templates} canInsert={canCreate} onInsert={(template) => { onTitle(template.topicTitle); onBody(template.body); window.setTimeout(() => document.getElementById("new-topic")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0); }} /><section id="new-topic" className="dark-panel scroll-mt-24 overflow-hidden"><div className="panel-title"><Plus /> Новая тема</div><div className="space-y-3 p-4">{user ? canCreate ? <><Input value={title} onChange={(event) => onTitle(event.target.value)} placeholder="Заголовок темы" maxLength={140} />{board.formSchema.map((field) => <FormField key={field.id} field={field} value={formData[field.id]} onChange={(value) => onFormData({ ...formData, [field.id]: value })} />)}<ForumRichEditor value={body} onChange={onBody} placeholder="Подробно опишите ситуацию…" rows={8} maxLength={20_000} toolbar={user.preferences.editorToolbar} /><label className="editor-label">Теги<select multiple className="forum-select min-h-24" value={tagIds} onChange={(event) => onTags([...event.target.selectedOptions].map((option) => option.value).slice(0, 5))}>{payload.tags.filter((tag) => tag.enabled).map((tag) => <option key={tag.id} value={tag.id}>{tag.label}</option>)}</select></label><Button disabled={busy || !title.trim() || !body.trim()} className="bg-red-600 font-bold hover:bg-red-500" onClick={onCreate}><Plus /> Опубликовать тему</Button></> : <p className="text-sm text-white/40">Создание тем доступно с роли ранга {board.postingMinRank}{board.archived ? ". Раздел находится в архиве." : "."}</p> : <button className="text-sm font-bold text-red-400" onClick={onLogin}>Войдите, чтобы создать тему.</button>}</div></section></>;
+  return <><button className="back-link" onClick={onBack}><ArrowLeft /> Главная форума</button><section className="dark-panel overflow-hidden"><div className="board-hero"><span className="board-icon large" style={{ color: board.accent, borderColor: `${board.accent}55`, background: `${board.accent}0d` }}>{board.icon}</span><div><div className="hero-kicker"><span /> Раздел форума</div><h1>{board.title}</h1><p>{board.description}</p></div>{user ? <Button size="sm" variant="outline" className="admin-icon-button" onClick={() => onAction({ action: "toggle_subscription", targetType: "board", targetId: board.id })}><Bell className={subscribed ? "fill-current" : ""} /> {subscribed ? "Подписка включена" : "Подписаться на раздел"}</Button> : null}</div></section><section className="dark-panel overflow-hidden"><div className="panel-title"><MessageSquare /> Темы раздела <span className="panel-count">{pagination.total}</span></div><div className="board-topic-filters"><label><Search /><Input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Найти на этой странице" /></label><select className="forum-select" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">Все статусы</option>{payload.topicStatuses.filter((status) => status.enabled).map((status) => <option key={status.id} value={status.id}>{status.label}</option>)}</select></div>{pinnedThreads.length ? <div className="pinned-topic-group"><div className="pinned-topic-title"><Star className="fill-current" /> Закреплено</div><ThreadRows threads={pinnedThreads} onThread={onThread} /></div> : null}{regularThreads.length ? <ThreadRows threads={regularThreads} onThread={onThread} /> : !pinnedThreads.length ? <div className="empty-state">По выбранным фильтрам тем нет.</div> : null}<Pagination pagination={pagination} onPage={onPage} /></section><PlayerTemplateLibrary templates={templates} canInsert={canCreate} onInsert={(template) => { onTitle(template.topicTitle); onBody(template.body); window.setTimeout(() => document.getElementById("new-topic")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0); }} /><section id="new-topic" className="dark-panel scroll-mt-24 overflow-hidden"><div className="panel-title"><Plus /> Новая тема</div><div className="space-y-3 p-4">{user ? canCreate ? <><Input value={title} onChange={(event) => onTitle(event.target.value)} placeholder="Заголовок темы" maxLength={140} />{board.formSchema.map((field) => <FormField key={field.id} field={field} value={formData[field.id]} onChange={(value) => onFormData({ ...formData, [field.id]: value })} />)}<ForumRichEditor value={body} onChange={onBody} placeholder="Подробно опишите ситуацию…" rows={8} maxLength={20_000} toolbar={user.preferences.editorToolbar} /><label className="editor-label">Теги<select multiple className="forum-select min-h-24" value={tagIds} onChange={(event) => onTags([...event.target.selectedOptions].map((option) => option.value).slice(0, 5))}>{payload.tags.filter((tag) => tag.enabled).map((tag) => <option key={tag.id} value={tag.id}>{tag.label}</option>)}</select></label><Button disabled={busy || !title.trim() || !body.trim()} className="bg-red-600 font-bold hover:bg-red-500" onClick={onCreate}><Plus /> Опубликовать тему</Button></> : <p className="text-sm text-white/40">Создание тем доступно с роли ранга {board.postingMinRank}{board.archived ? ". Раздел находится в архиве." : "."}</p> : <button className="text-sm font-bold text-red-400" onClick={onLogin}>Войдите, чтобы создать тему.</button>}</div></section></>;
 }
 
-function ThreadRows({ threads, readAt, onThread }: { threads: ForumThread[]; readAt: string; onThread: (id: string) => void }) { const readDate = readAt ? new Date(readAt).getTime() : 0; return <div className="divide-y divide-white/[0.06]">{threads.map((thread) => { const unread = new Date(thread.updatedAt).getTime() > readDate; return <button key={thread.id} className={unread ? "thread-row unread" : "thread-row"} onClick={() => onThread(thread.id)}><StatusBadge status={thread.status} definition={thread.statusDefinition} /><span className="min-w-0 flex-1 text-left"><span className="flex flex-wrap items-center gap-2"><strong>{thread.title}</strong>{unread ? <span className="new-topic-pill">Новое</span> : null}{thread.tags.map((tag) => <span key={tag.id} className="tag-pill" style={{ color: tag.color, borderColor: `${tag.color}55` }}>{tag.label}</span>)}</span><small>{thread.author.username} · {formatDate(thread.updatedAt)}{thread.assignment ? ` · рассматривает ${thread.assignment.username ?? thread.assignment.roleLabel}` : ""}</small></span><span className="thread-replies"><strong>{thread.replyCount}</strong><small>ответов</small></span><ChevronRight className="size-4 text-white/15" /></button>; })}</div>; }
+function ThreadRows({ threads, onThread }: { threads: ForumThread[]; onThread: (id: string) => void }) { return <div className="divide-y divide-white/[0.06]">{threads.map((thread) => <button key={thread.id} className={thread.unread ? "thread-row unread" : "thread-row"} onClick={() => onThread(thread.id)}><StatusBadge status={thread.status} definition={thread.statusDefinition} /><span className="min-w-0 flex-1 text-left"><span className="flex flex-wrap items-center gap-2"><strong>{thread.title}</strong>{thread.unread ? <span className="new-topic-pill">Новое</span> : null}{thread.tags.map((tag) => <span key={tag.id} className="tag-pill" style={{ color: tag.color, borderColor: `${tag.color}55` }}>{tag.label}</span>)}</span><small>{thread.author.username} · {formatDate(thread.updatedAt)}{thread.assignment ? ` · рассматривает ${thread.assignment.username ?? thread.assignment.roleLabel}` : ""}</small></span><span className="thread-replies"><strong>{thread.replyCount}</strong><small>ответов</small></span><span className="thread-replies"><strong>{thread.viewCount}</strong><small>просмотров</small></span><ChevronRight className="size-4 text-white/15" /></button>)}</div>; }
+
+function Pagination({ pagination, onPage }: { pagination: ForumPagination; onPage: (page: number) => void }) {
+  if (pagination.totalPages <= 1) return null;
+  const pages = [...new Set([1, pagination.page - 2, pagination.page - 1, pagination.page, pagination.page + 1, pagination.page + 2, pagination.totalPages])].filter((page) => page >= 1 && page <= pagination.totalPages).sort((left, right) => left - right);
+  return <nav className="forum-pagination" aria-label="Навигация по страницам"><Button size="sm" variant="outline" disabled={pagination.page <= 1} onClick={() => onPage(pagination.page - 1)}><ChevronLeft /> Назад</Button><div>{pages.map((page, index) => <span key={page}>{index > 0 && page - pages[index - 1] > 1 ? <i>…</i> : null}<button className={page === pagination.page ? "active" : ""} aria-current={page === pagination.page ? "page" : undefined} onClick={() => onPage(page)}>{page}</button></span>)}</div><Button size="sm" variant="outline" disabled={pagination.page >= pagination.totalPages} onClick={() => onPage(pagination.page + 1)}>Вперёд <ChevronRight /></Button></nav>;
+}
 
 function FormField({ field, value, onChange }: { field: ForumFormField; value: unknown; onChange: (value: unknown) => void }) {
   const label = <span>{field.label}{field.required ? " *" : ""}</span>;
@@ -477,7 +551,7 @@ function ThreadManagementToolbar({ thread, payload, user, onAction }: { thread: 
   </div>;
 }
 
-function ThreadView({ thread, posts, payload, user, reply, replyPrivate, busy, transferOpen, transferUserId, transferRoleId, transferReason, onBack, onProfile, onReply, onReplyPrivate, onSend, onLogin, onAction, onTransferOpen, onTransferUser, onTransferRole, onTransferReason, onTransfer, onTemplate }: { thread: ForumThread | null; posts: ForumPost[]; payload: ForumPayload; user: ForumUser | null; reply: string; replyPrivate: boolean; busy: boolean; transferOpen: boolean; transferUserId: string; transferRoleId: string; transferReason: string; onBack: (boardId: string) => void; onProfile: (userId: string) => void; onReply: (value: string) => void; onReplyPrivate: (value: boolean) => void; onSend: () => void; onLogin: () => void; onAction: (action: ForumAction) => void; onTransferOpen: (value: boolean) => void; onTransferUser: (value: string) => void; onTransferRole: (value: string) => void; onTransferReason: (value: string) => void; onTransfer: () => void; onTemplate: (template: ForumTemplate) => void }) {
+function ThreadView({ thread, posts, pagination, payload, user, reply, replyPrivate, busy, transferOpen, transferUserId, transferRoleId, transferReason, onBack, onProfile, onPage, onReply, onReplyPrivate, onSend, onLogin, onAction, onTransferOpen, onTransferUser, onTransferRole, onTransferReason, onTransfer, onTemplate }: { thread: ForumThread | null; posts: ForumPost[]; pagination: ForumPagination; payload: ForumPayload; user: ForumUser | null; reply: string; replyPrivate: boolean; busy: boolean; transferOpen: boolean; transferUserId: string; transferRoleId: string; transferReason: string; onBack: (boardId: string) => void; onProfile: (userId: string) => void; onPage: (page: number) => void; onReply: (value: string) => void; onReplyPrivate: (value: boolean) => void; onSend: () => void; onLogin: () => void; onAction: (action: ForumAction) => void; onTransferOpen: (value: boolean) => void; onTransferUser: (value: string) => void; onTransferRole: (value: string) => void; onTransferReason: (value: string) => void; onTransfer: () => void; onTemplate: (template: ForumTemplate) => void }) {
   const [revisionsOpen, setRevisionsOpen] = useState<string | null>(null);
   const [aiOpen, setAiOpen] = useState(false);
   const [aiTone, setAiTone] = useState<"neutral" | "strict" | "short">("neutral");
@@ -485,6 +559,7 @@ function ThreadView({ thread, posts, payload, user, reply, replyPrivate, busy, t
   const [aiSuggestions, setAiSuggestions] = useState<ForumAiSuggestion[]>([]);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
   if (!thread) return <div className="empty-state dark-panel">Тема не найдена или недоступна.</div>;
   const threadId = thread.id;
   const canStatus = roleHas(user, "forum.topic.status") && !payload.viewingAsRole;
@@ -501,16 +576,26 @@ function ThreadView({ thread, posts, payload, user, reply, replyPrivate, busy, t
       setAiError(error instanceof Error ? error.message : "AI-помощник временно недоступен.");
     } finally { setAiBusy(false); }
   }
+  async function copyThreadLink() {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+    } catch {
+      const input = document.createElement("input"); input.value = window.location.href; input.style.position = "fixed"; input.style.opacity = "0"; document.body.appendChild(input); input.select(); document.execCommand("copy"); input.remove();
+    }
+    setLinkCopied(true); window.setTimeout(() => setLinkCopied(false), 1600);
+  }
   const quickTemplates = [...payload.templates].sort((a, b) => Number(b.favorite) - Number(a.favorite) || a.sortOrder - b.sortOrder);
   return <>
     <button className="back-link" onClick={() => onBack(thread.boardId)}><ArrowLeft /> К списку тем</button>
     <section className="dark-panel overflow-hidden">
-      <div className="thread-control-head"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><StatusBadge status={thread.status} definition={thread.statusDefinition} />{thread.tags.map((tag) => <span key={tag.id} className="tag-pill" style={{ color: tag.color, borderColor: `${tag.color}55` }}>{tag.label}</span>)}{thread.locked ? <span className="private-pill"><Lock /> Ответы закрыты</span> : null}</div><h1>{thread.title}</h1>{thread.assignment ? <p>Рассматривает: <strong>{thread.assignment.username ?? thread.assignment.roleLabel}</strong>{thread.assignment.reason ? ` · ${thread.assignment.reason}` : ""}</p> : <p>Сотрудник ещё не назначен.</p>}</div><div className="thread-actions">{user ? <><Button size="sm" variant="outline" className="admin-icon-button" onClick={() => { const reason = window.prompt("Причина жалобы на тему"); if (reason) onAction({ action: "report_content", targetType: "thread", targetId: thread.id, reason }); }}><Flag /> Пожаловаться</Button><Button size="sm" variant="outline" className="admin-icon-button" onClick={() => onAction({ action: "toggle_bookmark", threadId: thread.id })}><Bookmark className={thread.bookmarked ? "fill-current" : ""} /> {thread.bookmarked ? "В закладках" : "Закладка"}</Button><Button size="sm" variant="outline" className="admin-icon-button" onClick={() => onAction({ action: "toggle_subscription", targetType: "thread", targetId: thread.id })}><Bell className={thread.subscribed ? "fill-current" : ""} /> {thread.subscribed ? "Подписан" : "Подписаться"}</Button></> : null}{canStatus ? <select className="forum-select w-auto text-xs" value={thread.status} onChange={(event) => onAction({ action: "set_thread_status", threadId: thread.id, status: event.target.value })}>{statuses.map((status) => <option key={status.id} value={status.id}>{status.label}</option>)}</select> : null}{roleHas(user, thread.locked ? "forum.topic.reopen" : "forum.topic.close") && !payload.viewingAsRole ? <Button size="sm" variant="outline" className="admin-icon-button" onClick={() => onAction({ action: "set_thread_lock", threadId: thread.id, locked: !thread.locked })}>{thread.locked ? <Unlock /> : <Lock />}{thread.locked ? "Открыть" : "Закрыть"}</Button> : null}</div></div>
+      <div className="thread-control-head"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><StatusBadge status={thread.status} definition={thread.statusDefinition} />{thread.tags.map((tag) => <span key={tag.id} className="tag-pill" style={{ color: tag.color, borderColor: `${tag.color}55` }}>{tag.label}</span>)}{thread.locked ? <span className="private-pill"><Lock /> Ответы закрыты</span> : null}</div><h1>{thread.title}</h1><div className="thread-meta-line"><span><Eye /> {thread.viewCount.toLocaleString("ru-RU")} просмотров</span><span><MessageSquare /> {thread.replyCount.toLocaleString("ru-RU")} ответов</span><span><Clock3 /> обновлено {formatDate(thread.updatedAt)}</span></div>{thread.assignment ? <p>Рассматривает: <strong>{thread.assignment.username ?? thread.assignment.roleLabel}</strong>{thread.assignment.reason ? ` · ${thread.assignment.reason}` : ""}</p> : <p>Сотрудник ещё не назначен.</p>}</div><div className="thread-actions"><Button size="sm" variant="outline" className="admin-icon-button" onClick={() => void copyThreadLink()}><Link2 /> {linkCopied ? "Ссылка скопирована" : "Поделиться"}</Button>{user ? <><Button size="sm" variant="outline" className="admin-icon-button" onClick={() => { const reason = window.prompt("Причина жалобы на тему"); if (reason) onAction({ action: "report_content", targetType: "thread", targetId: thread.id, reason }); }}><Flag /> Пожаловаться</Button><Button size="sm" variant="outline" className="admin-icon-button" onClick={() => onAction({ action: "toggle_bookmark", threadId: thread.id })}><Bookmark className={thread.bookmarked ? "fill-current" : ""} /> {thread.bookmarked ? "В закладках" : "Закладка"}</Button><Button size="sm" variant="outline" className="admin-icon-button" onClick={() => onAction({ action: "toggle_subscription", targetType: "thread", targetId: thread.id })}><Bell className={thread.subscribed ? "fill-current" : ""} /> {thread.subscribed ? "Подписан" : "Подписаться"}</Button></> : null}{canStatus ? <select className="forum-select w-auto text-xs" value={thread.status} onChange={(event) => onAction({ action: "set_thread_status", threadId: thread.id, status: event.target.value })}>{statuses.map((status) => <option key={status.id} value={status.id}>{status.label}</option>)}</select> : null}{roleHas(user, thread.locked ? "forum.topic.reopen" : "forum.topic.close") && !payload.viewingAsRole ? <Button size="sm" variant="outline" className="admin-icon-button" onClick={() => onAction({ action: "set_thread_lock", threadId: thread.id, locked: !thread.locked })}>{thread.locked ? <Unlock /> : <Lock />}{thread.locked ? "Открыть" : "Закрыть"}</Button> : null}</div></div>
       {canAssign ? <div className="moderation-actions">{thread.assignment?.userId === user?.id ? <Button size="sm" variant="outline" className="admin-icon-button" onClick={() => onAction({ action: "release_thread", threadId: thread.id })}><X /> Снять себя</Button> : <Button size="sm" className="bg-amber-600 font-bold hover:bg-amber-500" onClick={() => onAction({ action: "assign_thread", threadId: thread.id })}><ClipboardCheck /> Взять на рассмотрение</Button>}{canTransfer ? <Button size="sm" variant="outline" className="admin-icon-button" onClick={() => onTransferOpen(!transferOpen)}><Send /> Передать</Button> : null}{transferOpen ? <div className="transfer-form"><select className="forum-select" value={transferUserId} onChange={(event) => { onTransferUser(event.target.value); if (event.target.value) onTransferRole(""); }}><option value="">Конкретный сотрудник</option>{payload.staffUsers.filter((member) => member.role.canModerate && member.id !== user?.id).map((member) => <option key={member.id} value={member.id}>{member.username} — {member.role.label}</option>)}</select><select className="forum-select" value={transferRoleId} onChange={(event) => { onTransferRole(event.target.value); if (event.target.value) onTransferUser(""); }}><option value="">Или роль</option>{payload.roles.filter((role) => role.canModerate && role.enabled).map((role) => <option key={role.id} value={role.id}>{role.label}</option>)}</select><Input value={transferReason} onChange={(event) => onTransferReason(event.target.value)} placeholder="Причина передачи" /><Button size="sm" disabled={!transferReason || (!transferUserId && !transferRoleId)} onClick={onTransfer}><Send /> Передать</Button></div> : null}</div> : null}
     </section>
     <ThreadPoll thread={thread} payload={payload} user={user} busy={busy} onAction={onAction} />
     <PostCard thread={thread} post={null} user={thread.author} date={thread.createdAt} body={thread.body} showSignatures={user?.preferences.showSignatures ?? true} onProfile={() => onProfile(thread.author.id)} />
+    <Pagination pagination={pagination} onPage={onPage} />
     {posts.map((post) => <PostCard key={post.id} thread={thread} post={post} user={post.author} date={post.createdAt} body={post.body} showSignatures={user?.preferences.showSignatures ?? true} onProfile={() => onProfile(post.author.id)} onReact={(reactionId) => onAction({ action: "toggle_reaction", postId: post.id, reactionId })} onEdit={() => { const value = window.prompt("Новый текст сообщения", post.body); if (value) onAction({ action: "edit_post", postId: post.id, body: value }); }} onDelete={() => { if (window.confirm("Переместить сообщение в корзину?")) onAction({ action: "delete_post", postId: post.id }); }} revisionsOpen={revisionsOpen === post.id} onRevisions={() => setRevisionsOpen(revisionsOpen === post.id ? null : post.id)} canEdit={Boolean(user && (user.id === post.author.id || roleHas(user, "forum.post.edit_any")))} canDelete={roleHas(user, "forum.post.delete")} onReport={() => { const reason = window.prompt("Причина жалобы на сообщение"); if (reason) onAction({ action: "report_content", targetType: "post", targetId: post.id, reason }); }} canAccept={Boolean(user && !post.privateContent && !post.internal && (user.id === thread.author.id || roleHas(user, "forum.knowledge.manage")))} onAccept={() => onAction({ action: "accept_answer", threadId: thread.id, postId: post.id })} onSplit={roleHas(user, "forum.thread.merge") ? () => { const title = window.prompt("Заголовок новой темы", `Продолжение: ${thread.title}`); if (title?.trim()) onAction({ action: "split_post", postId: post.id, boardId: thread.boardId, title: title.trim() }); } : undefined} />)}
+    <Pagination pagination={pagination} onPage={onPage} />
     <section className="dark-panel overflow-hidden"><div className="panel-title"><MessageSquare /> Ответить в теме</div><div className="space-y-3 p-4">{user ? (thread.locked || thread.status === "closed") && !roleHas(user, "forum.topic.reopen") ? <p className="text-sm text-white/40">Тема закрыта для новых ответов.</p> : <>
       {quickTemplates.length ? <div className="template-quick-list"><span>Быстрые шаблоны:</span>{quickTemplates.slice(0, 5).map((template) => <button key={template.id} onClick={() => onTemplate(template)}>{template.favorite ? "★ " : ""}{template.title}</button>)}{quickTemplates.length > 5 ? <select aria-label="Все шаблоны" value="" onChange={(event) => { const selected = quickTemplates.find((item) => item.id === event.target.value); if (selected) onTemplate(selected); }}><option value="">Все шаблоны…</option>{quickTemplates.map((template) => <option key={template.id} value={template.id}>{template.title}</option>)}</select> : null}</div> : null}
       <ForumRichEditor value={reply} onChange={onReply} placeholder="Ваш ответ…" rows={7} maxLength={10_000} toolbar={user.preferences.editorToolbar} />
