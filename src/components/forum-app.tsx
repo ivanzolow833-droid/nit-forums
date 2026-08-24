@@ -96,6 +96,17 @@ type View =
   | { name: "profile"; userId: string }
   | { name: "community" };
 
+export type ForumInitialView =
+  | { name: "board"; boardId: string; page?: number }
+  | { name: "thread"; threadId: string; page?: number };
+
+export type ForumInitialSeo = {
+  title: string;
+  description: string;
+  body?: string;
+  meta?: string;
+};
+
 type MenuName = "notifications" | "messages" | "profile" | "theme" | null;
 
 function pageValue(value: string | null) {
@@ -106,6 +117,17 @@ function pageValue(value: string | null) {
 function viewFromLocation(): View {
   if (typeof window === "undefined") return { name: "home" };
   const params = new URLSearchParams(window.location.search);
+  const route = window.location.pathname.match(/^\/(forums|threads)\/([^/]+)\/?$/);
+  if (route) {
+    try {
+      const id = decodeURIComponent(route[2]).trim();
+      if (id) return route[1] === "forums"
+        ? { name: "board", boardId: id, page: pageValue(params.get("page")) }
+        : { name: "thread", threadId: id, page: pageValue(params.get("page")) };
+    } catch {
+      return { name: "home" };
+    }
+  }
   const boardId = params.get("board")?.trim();
   if (boardId) return { name: "board", boardId, page: pageValue(params.get("page")) };
   const threadId = params.get("thread")?.trim();
@@ -120,10 +142,10 @@ function viewFromLocation(): View {
 }
 
 function viewUrl(view: View) {
+  if (view.name === "board") return `/forums/${encodeURIComponent(view.boardId)}${(view.page ?? 1) > 1 ? `?page=${view.page}` : ""}`;
+  if (view.name === "thread") return `/threads/${encodeURIComponent(view.threadId)}${(view.page ?? 1) > 1 ? `?page=${view.page}` : ""}`;
   const params = new URLSearchParams();
-  if (view.name === "board") { params.set("board", view.boardId); if ((view.page ?? 1) > 1) params.set("page", String(view.page)); }
-  else if (view.name === "thread") { params.set("thread", view.threadId); if ((view.page ?? 1) > 1) params.set("page", String(view.page)); }
-  else if (view.name === "auth") { params.set("view", "auth"); params.set("mode", view.mode); }
+  if (view.name === "auth") { params.set("view", "auth"); params.set("mode", view.mode); }
   else if (view.name === "messages") { params.set("view", "messages"); if (view.conversationId) params.set("conversation", view.conversationId); }
   else if (view.name === "account") { params.set("view", "account"); params.set("tab", view.tab); }
   else if (view.name === "profile") { params.set("view", "profile"); params.set("user", view.userId); }
@@ -135,8 +157,8 @@ function roleHas(user: ForumUser | null, permission: PermissionKey) {
   return Boolean(user && (["owner", "mrproper"].includes(user.role.id) || user.role.permissions.includes(permission)));
 }
 
-export function ForumApp() {
-  const [view, setView] = useState<View>(viewFromLocation);
+export function ForumApp({ initialView, initialSeo }: { initialView?: ForumInitialView; initialSeo?: ForumInitialSeo } = {}) {
+  const [view, setView] = useState<View>(() => initialView ?? viewFromLocation());
   const [payload, setPayload] = useState<ForumPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [fatalError, setFatalError] = useState<string | null>(null);
@@ -381,7 +403,7 @@ export function ForumApp() {
   }
 
   if (fatalError && !payload) return <DatabaseSetup error={fatalError} onRetry={() => void refresh()} />;
-  if (!payload) return <LoadingScreen />;
+  if (!payload) return initialSeo ? <SeoLoadingScreen seo={initialSeo} /> : <LoadingScreen />;
 
   const user = payload.currentUser;
   const appearance = payload.forumSettings.appearance;
@@ -737,5 +759,17 @@ function PasswordChangeDialog({ currentPassword, newPassword, error, busy, onCur
 
 function DatabaseSetup({ error, onRetry }: { error: string; onRetry: () => void }) { return <main className="flex min-h-screen items-center justify-center bg-[#07090d] p-4"><div className="dark-panel w-full max-w-xl overflow-hidden text-center"><div className="p-8"><div className="mx-auto flex size-16 items-center justify-center rounded-2xl border border-red-500/25 bg-red-500/10 text-red-400"><Database className="size-7" /></div><h1 className="mt-5 font-heading text-2xl font-black uppercase text-white">Подключите базу данных</h1><p className="mt-3 text-sm leading-6 text-white/50">{error}</p><Button className="mt-5 bg-red-600 font-bold hover:bg-red-500" onClick={onRetry}><RefreshCw /> Проверить снова</Button></div></div></main>; }
 function LoadingScreen() { return <main className="flex min-h-screen items-center justify-center bg-[#07090d]"><div className="text-center"><div className="brand-mark mx-auto">CW</div><p className="mt-4 text-xs font-bold uppercase tracking-[0.2em] text-white/30">Загрузка форума</p></div></main>; }
+function SeoLoadingScreen({ seo }: { seo: ForumInitialSeo }) {
+  return <main className="seo-initial-shell">
+    <article className="dark-panel seo-initial-card">
+      <span>Официальный форум CloudWorld</span>
+      <h1>{seo.title}</h1>
+      <p>{seo.description}</p>
+      {seo.meta ? <small>{seo.meta}</small> : null}
+      {seo.body ? <div>{seo.body}</div> : null}
+      <em>Загрузка интерактивной версии форума…</em>
+    </article>
+  </main>;
+}
 
 function formatDate(value: string, short = false) { return new Intl.DateTimeFormat("ru-RU", short ? { day: "2-digit", month: "2-digit", year: "numeric" } : { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(value)); }

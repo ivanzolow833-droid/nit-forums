@@ -279,3 +279,29 @@ test("thread views and read state use additive privacy-safe storage", async () =
   assert.match(app, /thread\.viewCount\.toLocaleString\("ru-RU"\)/);
   assert.match(app, /thread\.unread \? "thread-row unread"/);
 });
+
+test("public forum pages expose crawlable SEO routes without leaking private content", async () => {
+  const [app, layout, threadPage, boardPage, seo, robots, sitemap, manifest] = await Promise.all([
+    source("src/components/forum-app.tsx"),
+    source("src/app/layout.tsx"),
+    source("src/app/threads/[threadId]/page.tsx"),
+    source("src/app/forums/[boardId]/page.tsx"),
+    source("src/lib/forum-seo.ts"),
+    source("src/app/robots.ts"),
+    source("src/app/sitemap.ts"),
+    source("src/app/manifest.ts"),
+  ]);
+  assert.match(app, /`\/threads\/\$\{encodeURIComponent\(view\.threadId\)\}/);
+  assert.match(app, /`\/forums\/\$\{encodeURIComponent\(view\.boardId\)\}/);
+  assert.match(layout, /"@type": "WebSite"/);
+  assert.match(threadPage, /DiscussionForumPosting/);
+  assert.match(threadPage, /alternates: \{ canonical \}/);
+  assert.match(boardPage, /"@type": "CollectionPage"/);
+  assert.match(seo, /p\.is_internal=FALSE AND p\.is_private=FALSE/);
+  assert.match(seo, /b\.visibility_min_rank<=0/);
+  assert.match(seo, /s\.is_staff_only=FALSE/);
+  assert.match(robots, /sitemap\.xml/);
+  assert.match(robots, /"\/api\/"/);
+  assert.match(sitemap, /loadPublicSitemapEntries/);
+  assert.match(manifest, /CloudWorld — официальный форум/);
+});
